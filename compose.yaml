@@ -1,0 +1,20 @@
+name: apuntado
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: apuntado
+      POSTGRES_PASSWORD: apuntado_local
+      POSTGRES_DB: apuntado
+    ports:
+      - '127.0.0.1:54329:5432'
+    volumes:
+      - apuntado_pg:/var/lib/postgresql
+      - ./database/init-test.sql:/docker-entrypoint-initdb.d/01-test.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U apuntado -d apuntado']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+volumes:
+  apuntado_pg:

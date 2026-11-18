@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-18T06:42:33.738Z",
+  "url": "http://localhost:3100",
+  "restart": true,
+  "reconnected": true,
+  "preservedDeadline": true,
+  "preservedHand": true,
+  "expiredTurnAdvancedOnce": true,
+  "backup": ".local/backups/preview-1794984146157.dump",
+  "restoreVerified": true,
+  "source": {
+    "players": 6,
+    "games": 3,
+    "cards": 312,
+    "operations": 31,
+    "outbox": 31,
+    "scores": "10b065915abac8c07ffeab613daed568",
+    "evidence": 40,
+    "rounds": "c8556f4f5390fff694a28f7f236fbb09"
+  },
+  "elapsedMs": 7346
+}

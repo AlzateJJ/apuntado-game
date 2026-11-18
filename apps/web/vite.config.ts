@@ -1,0 +1,15 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
+const backend = `http://127.0.0.1:${process.env.PORT || 3001}`;
+export default defineConfig({
+  root: fileURLToPath(new URL('.', import.meta.url)),
+  plugins: [react()],
+  server: {
+    host: '127.0.0.1',
+    port: Number(process.env.WEB_PORT || 5173),
+    strictPort: true,
+    proxy: { '/api': { target: backend }, '/socket.io': { target: backend, ws: true } },
+  },
+  build: { outDir: 'dist', emptyOutDir: true },
+});

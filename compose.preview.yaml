@@ -1,0 +1,44 @@
+name: apuntado-preview
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: preview
+      POSTGRES_PASSWORD: local-preview-only
+      POSTGRES_DB: apuntado_preview
+    volumes:
+      - preview_pg:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U preview -d apuntado_preview']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://preview:local-preview-only@db:5432/apuntado_preview
+    depends_on:
+      db:
+        condition: service_healthy
+  app:
+    build:
+      context: .
+      target: runtime
+    environment:
+      # HTTP-only local rehearsal. Real public deployment must use production + HTTPS.
+      NODE_ENV: development
+      DATABASE_URL: postgresql://preview:local-preview-only@db:5432/apuntado_preview
+      JWT_SECRET: ${JWT_SECRET:?Run npm run setup first; .env supplies a local secret}
+      ALLOWED_ORIGINS: http://localhost:3100
+      HOST: 0.0.0.0
+      PORT: 3001
+      SERVE_WEB: 'true'
+    ports:
+      - '127.0.0.1:3100:3001'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+volumes:
+  preview_pg:
