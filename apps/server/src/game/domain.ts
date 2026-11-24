@@ -12,6 +12,7 @@ export class RuleError extends Error {
 }
 export interface TableState {
   players: string[];
+  forfeited: string[];
   hands: Record<string, number[]>;
   stock: number[];
   discard: number[];
@@ -54,6 +55,7 @@ export function deal(
     for (const player of players) hands[player]!.push(deck.pop()!);
   const state: TableState = {
     players: [...players],
+    forfeited: [],
     hands,
     stock: deck,
     discard: [deck.pop()!],
@@ -93,8 +95,8 @@ export function discard(state: TableState, cardNo: number) {
 export function pass(state: TableState, now: number, turnSeconds: number) {
   if (state.phase !== 'decision')
     throw new RuleError('INVALID_PHASE', 'Debes robar y descartar antes de pasar.');
-  state.turnPlayerId =
-    state.players[(state.players.indexOf(state.turnPlayerId) + 1) % state.players.length]!;
+  const eligible = state.players.filter((id) => !state.forfeited.includes(id));
+  state.turnPlayerId = eligible[(eligible.indexOf(state.turnPlayerId) + 1) % eligible.length]!;
   state.turnNo++;
   state.phase = 'draw';
   state.startedAt = now;
@@ -129,6 +131,7 @@ function assertConservation(state: TableState) {
     throw new Error('Card conservation invariant violated');
 }
 function assertTurn(state: TableState) {
+  if (state.forfeited.includes(state.turnPlayerId)) throw new Error('Forfeited player has a turn');
   if (
     !state.players.includes(state.turnPlayerId) ||
     state.players.length < 2 ||

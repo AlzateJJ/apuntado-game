@@ -1,0 +1,72 @@
+{
+  "at": "2026-11-24T07:35:14.885Z",
+  "environment": {
+    "node": "v24.22.0",
+    "os": "win32 10.0.26200",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "rooms": 10,
+    "clients": 60,
+    "postgres": "18",
+    "network": "loopback; server and clients share one monotonic clock",
+    "provisioning": "direct auth service outside measurement",
+    "pacingMs": 500
+  },
+  "durationMs": 108337,
+  "commands": 720,
+  "expectedRecipients": 4320,
+  "received": 4320,
+  "duplicates": 0,
+  "errors": [],
+  "milliseconds": {
+    "ack": {
+      "count": 720,
+      "p50": 37.3,
+      "p95": 110.303,
+      "p99": 218.619,
+      "max": 364.425
+    },
+    "commitObservedToRecipient": {
+      "count": 4320,
+      "p50": 212.19,
+      "p95": 347.931,
+      "p99": 502.295,
+      "max": 685.883
+    },
+    "snapshot": {
+      "count": 6114,
+      "p50": 41.419,
+      "p95": 131.69,
+      "p99": 223.519,
+      "max": 354.229
+    },
+    "pingRTT": {
+      "count": 60,
+      "p50": 1.121,
+      "p95": 1.38,
+      "p99": 1.496,
+      "max": 1.496
+    },
+    "evaluation": {
+      "count": 1000,
+      "p50": 0.106,
+      "p95": 0.335,
+      "p99": 0.574,
+      "max": 4.875
+    },
+    "settlement": {
+      "count": 1000,
+      "p50": 0.227,
+      "p95": 0.885,
+      "p99": 1.309,
+      "max": 4.915
+    }
+  },
+  "probes": {
+    "reconnect": true,
+    "timeout": true,
+    "timeoutLatenessMs": 148,
+    "classicClose": true,
+    "apuntadoClose": true
+  },
+  "limitations": "Local pilot, not Internet latency or real devices. Commit time is observed immediately after pg COMMIT resolves; sub-millisecond scheduling bias is not separately measured."
+}

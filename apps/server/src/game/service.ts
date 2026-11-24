@@ -2,11 +2,13 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import {
   gameCommandSchema,
+  DISCARD_PAUSE_MS,
   roundReportSchema,
   type CommandReceipt,
   type GameCommand,
   type GameChanged,
   type RoomSnapshot,
+  type Closure,
 } from '@apuntado/contracts';
 import { AppError } from '../errors.js';
 import {
@@ -32,6 +34,7 @@ import {
 import { variantCatalog } from './rules/catalog.js';
 import type { VariantCatalog } from './rules/model.js';
 import { readReport, saveSettlement } from './settlement-store.js';
+import { recordTimeout } from './inactivity-store.js';
 
 type Create = Extract<GameCommand, { type: 'room:create' }>;
 type Join = Extract<GameCommand, { type: 'room:join' }>;
@@ -40,6 +43,13 @@ type TurnCommand = Extract<GameCommand, { roundNo: number }>;
 const fail = (code: string, message: string): never => {
   throw new AppError(409, code, message);
 };
+const rejectPass = (state: TableState): never =>
+  fail(
+    state.phase === 'decision' ? 'TURN_ADVANCING' : 'INVALID_PHASE',
+    'Roba y descarta. El turno avanzará automáticamente después de dos segundos.',
+  );
+const timeoutAction = (transition: boolean, forfeited: boolean) =>
+  transition ? 'turn:pass' : forfeited ? 'round:forfeit' : 'turn:timeout';
 const fingerprint = (command: GameCommand) =>
   createHash('sha256')
     .update(JSON.stringify(Object.entries(command).sort(([a], [b]) => a.localeCompare(b))))
@@ -436,6 +446,8 @@ export class GameService {
     const { roundNo, state } = await loadTable(client, game.game_id);
     if (roundNo !== command.roundNo || state.turnNo !== command.turnNo)
       fail('TURN_CHANGED', 'Ese turno ya terminó.');
+    if (state.forfeited.includes(playerId))
+      fail('ROUND_FORFEITED', 'Perdiste esta ronda por tres turnos automáticos consecutivos.');
     if (state.turnPlayerId !== playerId)
       throw new AppError(403, 'NOT_YOUR_TURN', 'Espera a que llegue tu turno.');
     const now = this.now();
@@ -443,9 +455,10 @@ export class GameService {
       fail('TURN_EXPIRED', 'Se acabó el tiempo. El servidor completará el turno.');
     if (command.type === 'round:close')
       return this.closeRound(client, game, roster, playerId, command, roundNo, state, now);
-    if (command.type === 'turn:draw') draw(state, command.source, this.random);
-    else if (command.type === 'turn:discard') discard(state, command.cardNo);
-    else pass(state, now, game.turn_seconds);
+    if (command.type === 'turn:discard')
+      return this.discardTurn(client, game, roster, playerId, command, roundNo, state, now);
+    if (command.type === 'turn:pass') return rejectPass(state);
+    draw(state, command.source, this.random);
     await saveTable(client, game.game_id, roundNo, state);
     const event = {
       'turn:draw': 'CardDrawn',
@@ -454,12 +467,52 @@ export class GameService {
     }[command.type];
     return this.finish(client, game.game_id, playerId, command, event, roundNo, state.turnNo);
   }
+  private async discardTurn(
+    client: PoolClient,
+    game: GameRow,
+    roster: MemberRow[],
+    playerId: string,
+    command: Extract<GameCommand, { type: 'turn:discard' }>,
+    roundNo: number,
+    state: TableState,
+    now: number,
+  ) {
+    discard(state, command.cardNo);
+    state.deadlineAt = now + DISCARD_PAUSE_MS;
+    await saveTable(client, game.game_id, roundNo, state);
+    await client.query(
+      'UPDATE round_participation SET timeout_streak=0 WHERE game_id=$1 AND round_no=$2 AND player_id=$3',
+      [game.game_id, roundNo, playerId],
+    );
+    if (command.closure)
+      return this.closeRound(
+        client,
+        game,
+        roster,
+        playerId,
+        { ...command, closure: command.closure },
+        roundNo,
+        state,
+        now,
+      );
+    return this.finish(
+      client,
+      game.game_id,
+      playerId,
+      command,
+      'CardDiscarded',
+      roundNo,
+      state.turnNo,
+    );
+  }
   private async closeRound(
     client: PoolClient,
     game: GameRow,
     roster: MemberRow[],
     playerId: string,
-    command: Extract<GameCommand, { type: 'round:close' }>,
+    command:
+      | Extract<GameCommand, { type: 'round:close' }>
+      | (Extract<GameCommand, { type: 'turn:discard' }> & { closure: Closure }),
     roundNo: number,
     state: TableState,
     now: number,
@@ -472,6 +525,8 @@ export class GameService {
       score: roster.find((row) => row.player_id === id)!.score,
     }));
     const settled = this.variants(game.profile_id)(players, playerId, command.closure, game);
+    for (const player of settled.players)
+      if (state.forfeited.includes(player.id)) player.explanation = 'inactivity';
     await saveSettlement(
       client,
       game.game_id,
@@ -512,12 +567,26 @@ export class GameService {
       const oldTurn = state.turnNo,
         actorId = state.turnPlayerId,
         now = this.now();
-      if (!expire(state, now, game.turn_seconds, this.random)) return false;
+      if (now < state.deadlineAt) return false;
+      const transition = state.phase === 'decision';
+      if (transition) pass(state, now, game.turn_seconds);
+      else expire(state, now, game.turn_seconds, this.random);
       await saveTable(client, gameId, roundNo, state);
+      const inactivity = transition
+        ? { forfeited: false, closed: false, finished: false }
+        : await recordTimeout(
+            client,
+            game,
+            roundNo,
+            state,
+            actorId,
+            await members(client, gameId),
+            now,
+          );
       const action = {
-        type: 'turn:timeout',
+        type: timeoutAction(transition, inactivity.forfeited),
         playerId: actorId,
-        automatic: true,
+        automatic: !transition,
         at: new Date(now).toISOString(),
       };
       const version = (
@@ -529,10 +598,25 @@ export class GameService {
       const operationId = `timeout:${roundNo}:${oldTurn}`;
       await client.query(
         `INSERT INTO processed_operation(game_id,operation_id,actor_kind,on_behalf_of_player_id,fingerprint,response,command_type)
-        VALUES($1,$2::text,'system',$3,$2::text,$4,'turn:timeout')`,
-        [gameId, operationId, actorId, JSON.stringify({ operationId, gameId, version })],
+        VALUES($1,$2::text,'system',$3,$2::text,$4,$5)`,
+        [
+          gameId,
+          operationId,
+          actorId,
+          JSON.stringify({ operationId, gameId, version }),
+          transition ? 'turn:pass' : 'turn:timeout',
+        ],
       );
-      await this.event(client, gameId, version, 'TurnChanged', roundNo, state.turnNo);
+      await this.event(
+        client,
+        gameId,
+        version,
+        inactivity.closed ? 'RoundClosed' : 'TurnChanged',
+        roundNo,
+        state.turnNo,
+      );
+      if (inactivity.finished)
+        await this.event(client, gameId, version, 'GameFinished', roundNo, state.turnNo);
       return true;
     });
   }

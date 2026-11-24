@@ -6,11 +6,15 @@ import { store } from './store';
 import { refreshSession } from './session';
 import './styles.css';
 import './game.css';
+import './workspace.css';
+import { SoundProvider } from './Sound';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Provider store={store}>
-      <App />
+      <SoundProvider>
+        <App />
+      </SoundProvider>
     </Provider>
   </StrictMode>,
 );

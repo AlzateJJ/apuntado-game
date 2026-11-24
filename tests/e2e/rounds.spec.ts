@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, navigate } from './fixtures.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
@@ -84,11 +84,13 @@ for (const mode of ['Clásica', 'Apuntado'] as const)
         await expect(page.getByRole('group', { name: 'Tu mano' }).getByRole('button')).toHaveCount(
           10,
         );
+        await navigate(page, 'Rondas anteriores');
         await page.getByText('Consultar rondas anteriores (1)').click();
         await page.getByLabel('Ronda cerrada').selectOption('1');
         await expect(page.getByRole('region', { name: 'Acta de ronda 1' })).toContainText(
           '5 puntos',
         );
+        await navigate(page, 'Mi mesa');
         for (let round = 2; round <= 3; round++) {
           await arrange(
             suit10(),

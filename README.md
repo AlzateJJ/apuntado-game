@@ -2,7 +2,7 @@
 
 PMV funcional del Entregable 2: cuentas e invitados, salas por código, Clásica y Apuntado, reparto privado, turnos de **30 segundos**, descarte automático, cierres, actas, puntos, eliminaciones, siguientes rondas y resultado final. Incluye pruebas de navegador, piloto de 60 conexiones y despliegue local reproducible con Docker.
 
-La [guía de entrega](docs/delivery.md) reúne cómo demostrarlo, la trazabilidad y los límites verificados. La [guía de despliegue](docs/deployment.md) explica Docker, respaldos y la publicación en Vercel/Railway. El backend y PostgreSQL ya están en línea en Railway y el backend tiene dominio público; faltan el frontend en Vercel y la verificación del juego por Internet.
+La [guía de entrega](docs/delivery.md) reúne cómo demostrarlo, la trazabilidad y los límites verificados. La [guía de despliegue](docs/deployment.md) explica Docker, respaldos y la publicación en Vercel/Railway. El usuario confirmó el funcionamiento del frontend en Vercel con el backend y PostgreSQL en Railway. Las mejoras de interfaz e inactividad del 24 de noviembre requieren actualizar ambos despliegues y aplicar la quinta migración.
 
 ## Ejecutar en este equipo
 
@@ -33,15 +33,19 @@ En un equipo con **Node 24 LTS + npm y Docker Compose**, los mismos comandos se 
 5. Recargar o abrir otra pestaña: se conserva la identidad mediante una cookie privada.
 6. Cerrar sesión: se revocan la credencial y todas las conexiones de esa sesión. Un invitado que sale necesita crear otro acceso.
 7. Crear una sala, elegir modalidad/capacidad y compartir su código. El anfitrión inicia con al menos dos jugadores.
-8. Robar del mazo o del descarte, seleccionar una carta propia, descartarla y terminar el turno.
+8. Robar del mazo o con **Robar del descarte**, seleccionar una carta y descartarla: el siguiente turno comienza automáticamente después de dos segundos. Pulsar la pila abre un visor de consulta, sin robar.
 9. Dejar vencer los 30 segundos: el servidor completa robo/descarte/pase según la fase, sin hacer un segundo descarte si ya ocurrió.
-10. Después del descarte, cerrar por combinaciones; en Apuntado también puedes cerrar por pintas o tocar. Un cierre inválido conserva la mano y el plazo.
+10. Antes de descartar, elegir **Cerrar por combinaciones**; en Apuntado también puedes cerrar por pintas o tocar. La intención y el descarte se validan juntos; una declaración inválida conserva las once cartas y el plazo para corregirla.
 11. Consultar las manos y la liquidación de cada ronda. En Apuntado, el anfitrión reparte la siguiente hasta que haya ganador; los eliminados siguen como espectadores.
 12. Recuperar el resultado al recargar y pulsar **Volver al inicio** para jugar otra partida.
+13. Ordenar por palo, de menor a mayor (A, 2…10, J, Q, K) o arrastrando cartas con ratón/dedo. Alt + flechas ofrece una alternativa de teclado. El orden se guarda por jugador, partida y ronda en este navegador, sobrevive a cambios de turno y recargas, y añade las cartas nuevas al final.
+14. Abrir **Cómo jugar** o **Rondas anteriores** desde el sidebar fijo en escritorio y el menú de hamburguesa en móvil. Los datos de usuario están en la parte inferior del menú.
+15. Escuchar la música tras la primera interacción, el tic-tac creciente de los últimos siete segundos propios y silenciarlos con el altavoz. La preferencia persiste. Una pestaña oculta deja de sonar.
+16. Perder tres turnos propios consecutivos: se pierde solo la ronda. Un descarte manual válido reinicia el contador; la pausa normal de dos segundos no penaliza. Ver ADR-10 para el descuento y la continuidad del juego.
 
 **Para probar dos jugadores en un equipo**, usa un navegador normal y una ventana de incógnito, o perfiles distintos. Las pestañas normales comparten identidad. La guía de [fase 2](docs/phase-2.md) detalla el recorrido, los contratos y las reglas operativas.
 
-La salida de sala se permite antes de empezar y después del resultado final. Antes del inicio transfiere el anfitrión si corresponde. Durante una partida activa, desconectarse conserva el asiento y los turnos siguen automáticamente. No se asigna un ganador por desconexión ni se cancela por abandono automáticamente.
+La salida de sala se permite antes de empezar y después del resultado final. Desconectarse conserva el asiento y el reloj; no admite sustitutos. Con una cuenta, iniciar sesión desde otro dispositivo recupera la misma partida. Tres turnos automáticos consecutivos hacen perder la ronda y se omite ese asiento hasta el siguiente reparto. Si queda uno, gana la ronda: en Clásica termina la partida; en Apuntado no recibe premio de cierre y los ausentes pierden los puntos de sus cartas sin combinación. Pueden volver en la siguiente ronda si no llegaron a −101. Si el anfitrión pierde la ronda por inactividad, el control pasa a otro jugador.
 
 El JWT solo permanece en memoria. No hay tokens en `localStorage`, `sessionStorage` ni URLs. La renovación dura como máximo 14 días desde el inicio de la sesión; no se extiende indefinidamente. Una cuenta permite volver a entrar con sus credenciales. Un invitado no se recupera por nombre ni desde otro dispositivo.
 

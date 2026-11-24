@@ -3,8 +3,9 @@ import { useSelector } from 'react-redux';
 import { useForm } from 'react-hook-form';
 import { guestSchema, loginSchema, registerSchema } from '@apuntado/contracts';
 import type { RootState } from './store';
-import { ApiFailure, enter, logout, reconnect } from './session';
-import GameHub from './GameHub';
+import { ApiFailure, enter } from './session';
+import AppShell from './AppShell';
+import { SoundButton } from './Sound';
 
 type Mode = 'login' | 'register' | 'guest';
 type FormFields = { displayName: string; email: string; password: string };
@@ -201,75 +202,9 @@ function AccessForm() {
     </section>
   );
 }
-function Welcome() {
-  const { session, connection } = useSelector((state: RootState) => state.auth);
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (!session) return null;
-  const exit = async () => {
-    setLeaving(true);
-    setError(null);
-    try {
-      await logout();
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'No pudimos cerrar la sesión.');
-    } finally {
-      setLeaving(false);
-    }
-  };
-  return (
-    <section className="player-bar" aria-labelledby="welcome-title">
-      <div className="player-greeting">
-        <span className="avatar" aria-hidden="true">
-          {session.player.displayName.slice(0, 1).toLocaleUpperCase()}
-        </span>
-        <div className="eyebrow">
-          {session.player.kind === 'guest' ? 'ACCESO COMO INVITADO' : 'TU CUENTA DE APUNTADO'}
-        </div>
-        <h2 id="welcome-title">Hola, {session.player.displayName}.</h2>
-      </div>
-      <div className="session-controls">
-        <div className={`connection-box ${connection}`} role="status">
-          <span className="status-dot" />
-          <div>
-            <strong>
-              {connection === 'online'
-                ? 'Conexión activa'
-                : connection === 'connecting'
-                  ? 'Conectando…'
-                  : 'Conexión interrumpida'}
-            </strong>
-            <p>
-              {connection === 'online'
-                ? 'Ya estás conectado a Apuntado.'
-                : connection === 'connecting'
-                  ? 'Estamos preparando tu conexión.'
-                  : 'Intentaremos reconectarte automáticamente.'}
-            </p>
-          </div>
-        </div>
-        {connection === 'offline' && (
-          <button className="text-button" onClick={reconnect}>
-            Reintentar conexión
-          </button>
-        )}
-        {error && (
-          <p className="error-banner" role="alert">
-            {error}
-          </p>
-        )}
-        <button className="secondary-button" onClick={() => void exit()} disabled={leaving}>
-          {leaving ? 'Saliendo…' : 'Cerrar sesión'}
-        </button>
-        {session.player.kind === 'guest' && (
-          <p className="access-note">Al salir, termina el acceso de este invitado.</p>
-        )}
-      </div>
-    </section>
-  );
-}
 export default function App() {
   const { status, notice } = useSelector((state: RootState) => state.auth);
+  if (status === 'authenticated') return <AppShell />;
   return (
     <div className="page">
       <header className="site-header">
@@ -277,64 +212,51 @@ export default function App() {
           <span aria-hidden="true">♠</span> apuntado<span className="brand-period">.</span>
         </a>
         <span className="header-caption">ENTRE CARTAS Y AMIGOS</span>
+        <SoundButton />
       </header>
-      <main className={status === 'authenticated' ? 'play-main' : undefined}>
-        {status === 'authenticated' ? (
-          <>
-            <Welcome />
-            {notice && (
-              <p className="error-banner" role="alert">
-                {notice}
-              </p>
-            )}
-            <GameHub />
-          </>
-        ) : (
-          <>
-            <section className="story">
-              <div className="eyebrow">
-                <span className="tiny-line" /> EL PLAN ES JUNTARNOS
-              </div>
-              <h1>
-                Un lugar
-                <br />
-                en la <em>mesa.</em>
-              </h1>
-              <p className="story-description">
-                Las cartas de siempre.
-                <br />
-                La emoción de una buena mano.
-                <br />Y tus amigos, donde estén.
-              </p>
-              <Cards />
-              <div className="game-details">
-                <span>
-                  <b>2–6</b> jugadores
-                </span>
-                <span>
-                  <b>2</b> modalidades
-                </span>
-                <span>
-                  <b>30 s</b> por turno
-                </span>
-              </div>
+      <main>
+        <section className="story">
+          <div className="eyebrow">
+            <span className="tiny-line" /> EL PLAN ES JUNTARNOS
+          </div>
+          <h1>
+            Un lugar
+            <br />
+            en la <em>mesa.</em>
+          </h1>
+          <p className="story-description">
+            Las cartas de siempre.
+            <br />
+            La emoción de una buena mano.
+            <br />Y tus amigos, donde estén.
+          </p>
+          <Cards />
+          <div className="game-details">
+            <span>
+              <b>2–6</b> jugadores
+            </span>
+            <span>
+              <b>2</b> modalidades
+            </span>
+            <span>
+              <b>30 s</b> por turno
+            </span>
+          </div>
+        </section>
+        <div className="access-wrap">
+          {notice && (
+            <p className="error-banner" role="alert">
+              {notice}
+            </p>
+          )}
+          {status === 'checking' ? (
+            <section className="access-panel loading" role="status">
+              Preparando tu lugar…
             </section>
-            <div className="access-wrap">
-              {notice && (
-                <p className="error-banner" role="alert">
-                  {notice}
-                </p>
-              )}
-              {status === 'checking' ? (
-                <section className="access-panel loading" role="status">
-                  Preparando tu lugar…
-                </section>
-              ) : (
-                <AccessForm />
-              )}
-            </div>
-          </>
-        )}
+          ) : (
+            <AccessForm />
+          )}
+        </div>
       </main>
       <footer>
         <span>Hecho para compartir una buena partida.</span>

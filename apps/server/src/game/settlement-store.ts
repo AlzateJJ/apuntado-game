@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import type { Closure, RoundReport, RoundSummary } from '@apuntado/contracts';
+import type { RoundClosure, RoundReport, RoundSummary } from '@apuntado/contracts';
 import type { Settlement } from './rules/model.js';
 import { cards } from './domain.js';
 
@@ -7,6 +7,7 @@ const summary = (row: Record<string, any>): RoundSummary => ({
   number: row.round_no,
   actorId: row.actor_id,
   closure: row.closure,
+  roundWinnerId: row.round_winner_id,
   winnerId: row.winner_id,
   next: row.next_action,
   closedAt: row.closed_at.toISOString(),
@@ -32,10 +33,11 @@ export async function readReport(
   if (!result) throw new Error('Committed round result missing');
   const entries = (
     await client.query(
-      `SELECT e.*,p.display_name,m.delta,
+      `SELECT e.*,p.display_name,m.delta,rp.forfeited,
     COALESCE((SELECT sum(delta) FROM score_movement s WHERE s.game_id=e.game_id AND s.player_id=e.player_id AND s.round_no<e.round_no),0)::integer AS before,
     (pt.eliminated_at_round=e.round_no) IS TRUE AS eliminated
     FROM hand_evaluation e JOIN player p USING(player_id) JOIN participation pt USING(game_id,player_id)
+    JOIN round_participation rp USING(game_id,round_no,player_id)
     LEFT JOIN score_movement m USING(game_id,round_no,player_id)
     WHERE e.game_id=$1 AND e.round_no=$2 ORDER BY pt.seat`,
       [gameId, roundNo],
@@ -75,6 +77,7 @@ export async function readReport(
         delta: scored ? entry.delta : null,
         after: scored ? entry.before + entry.delta : null,
         eliminated: entry.eliminated,
+        roundForfeited: entry.forfeited,
       };
     }),
   };
@@ -84,14 +87,14 @@ export async function saveSettlement(
   gameId: string,
   roundNo: number,
   actorId: string,
-  closure: Closure,
+  closure: RoundClosure,
   version: number,
   settled: Settlement,
   now: number,
 ) {
   await client.query(
-    `INSERT INTO round_result(game_id,round_no,actor_id,closure,winner_id,next_action,committed_version,closed_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+    `INSERT INTO round_result(game_id,round_no,actor_id,closure,winner_id,next_action,committed_version,closed_at,round_winner_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
     [
       gameId,
       roundNo,
@@ -101,6 +104,7 @@ export async function saveSettlement(
       settled.winnerId ? 'home' : 'next-round',
       version,
       new Date(now),
+      settled.roundWinnerId ?? (closure === 'toque' ? null : actorId),
     ],
   );
   for (const player of settled.players) {

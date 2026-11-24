@@ -9,7 +9,7 @@ Implementa el alcance solicitado: crear y unirse a salas, elegir modalidad, repa
 3. Abre otro navegador, perfil o ventana de incógnito para el segundo jugador. Dos pestañas normales comparten la misma sesión y representan al mismo jugador.
 4. Entra con otra cuenta o invitado y usa el código. El anfitrión verá al participante sin recargar.
 5. El anfitrión pulsa **Repartir y empezar**. Cada mano contiene diez cartas privadas; se sortea el primer jugador.
-6. En tu turno, pulsa el mazo o el descarte para robar, selecciona una de tus once cartas y pulsa **Descartar carta seleccionada**. Termina con **Terminar turno**.
+6. En tu turno, pulsa el mazo o **Robar del descarte**, selecciona una de tus once cartas y pulsa **Descartar carta seleccionada**. Desde la actualización del 24 de noviembre, el turno avanza solo después de dos segundos; ver ADR-10. Pulsar la pila de descarte abre el visor de consulta.
 7. Deja vencer un turno o cierra el navegador de quien juega: el servidor completa el turno. Recargar con una sesión vigente recupera la misma mano, sala y fecha de vencimiento.
 
 Una identidad solo puede estar en una sala abierta a la vez. Antes de empezar puede salir: si era anfitrión, el rol pasa al menor asiento restante; si sale el último participante, se cancela la sala. Desconectarse o cerrar sesión no equivale a salir. Durante una partida activa no se elimina a nadie por desconexión.

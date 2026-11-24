@@ -194,7 +194,7 @@ try {
   // One monotonic process clock for server commit observation and all client receptions.
   measuring = true;
   const started = performance.now();
-  console.log('Measuring 1,080 legal commands, authorized snapshots and every recipient…');
+  console.log('Measuring 720 legal commands, two-second transitions and every recipient…');
   await Promise.all(
     Array.from({ length: 10 }, async (_, index) => {
       const group = clients.slice(index * 6, index * 6 + 6);
@@ -205,10 +205,15 @@ try {
         await delay(500);
         room = await current(actor);
         await command(actor, { type: 'turn:discard', ...base(room), cardNo: room.hand[0]!.cardNo });
-        await delay(500);
-        room = await current(actor);
-        await command(actor, { type: 'turn:pass', ...base(room) });
-        await delay(500);
+        const priorTurn = room.round!.turnNo;
+        await delay(2000);
+        const transitionDeadline = Date.now() + 5000;
+        do {
+          room = await current(actor);
+          if (room.round!.turnNo > priorTurn) break;
+          await delay(100);
+        } while (Date.now() < transitionDeadline);
+        assert.equal(room.round!.turnNo, priorTurn + 1);
       }
     }),
   );
@@ -217,7 +222,7 @@ try {
   while (received < commands * 6 && Date.now() < receptionDeadline) await delay(50);
   const duration = performance.now() - started;
   measuring = false;
-  assert.equal(commands, 1080);
+  assert.equal(commands, 720);
   assert.equal(received, commands * 6);
   assert.deepEqual(errors, []);
   // Additional recovery/closure probes are deliberately excluded from the legal-command distribution.

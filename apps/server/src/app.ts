@@ -57,7 +57,7 @@ export function createApplication(
   app.get('/api/ready', async (_request, response) => {
     try {
       await pool.query(
-        'SELECT s.session_id,g.last_action,r.initial_player_id FROM auth_session s CROSS JOIN game g CROSS JOIN round r LIMIT 0',
+        'SELECT s.session_id,g.last_action,r.initial_player_id,rp.timeout_streak,rp.forfeited,rr.round_winner_id FROM auth_session s CROSS JOIN game g CROSS JOIN round r CROSS JOIN round_participation rp CROSS JOIN round_result rr LIMIT 0',
       );
       response.json({ status: 'ready' });
     } catch {

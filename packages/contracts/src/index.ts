@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const PROTOCOL_VERSION = 1 as const;
 export const TURN_SECONDS = 30 as const;
+export const TIMEOUT_LIMIT = 3 as const;
+export const DISCARD_PAUSE_MS = 2000 as const;
 const displayName = z
   .string()
   .trim()
@@ -115,6 +117,7 @@ export const gameCommandSchema = z.discriminatedUnion('type', [
     type: z.literal('turn:discard'),
     ...turn,
     cardNo: z.number().int().min(1).max(104),
+    closure: z.enum(['combinaciones', 'pintas', 'toque']).optional(),
   }),
   z.strictObject({ type: z.literal('turn:pass'), ...turn }),
   z.strictObject({
@@ -131,6 +134,7 @@ export const roundReportSchema = z.strictObject({
 });
 export type RoundReportRequest = z.infer<typeof roundReportSchema>;
 export type Closure = 'combinaciones' | 'pintas' | 'toque';
+export type RoundClosure = Closure | 'inactivity';
 export interface CardGroup {
   kind: 'group' | 'run' | 'suit';
   cards: PlayingCard[];
@@ -138,7 +142,8 @@ export interface CardGroup {
 export interface RoundSummary {
   number: number;
   actorId: string;
-  closure: Closure;
+  closure: RoundClosure;
+  roundWinnerId: string | null;
   winnerId: string | null;
   next: 'home' | 'next-round';
   closedAt: string;
@@ -151,7 +156,15 @@ export interface RoundReport extends RoundSummary {
     groups: CardGroup[];
     leftovers: PlayingCard[];
     penalty: number;
-    explanation: 'classic-close' | 'combinations' | 'suit' | 'touch' | 'minimum-penalty';
+    explanation:
+      | 'classic-close'
+      | 'combinations'
+      | 'suit'
+      | 'touch'
+      | 'minimum-penalty'
+      | 'inactivity'
+      | 'last-in-round';
+    roundForfeited: boolean;
     before: number | null;
     delta: number | null;
     after: number | null;
@@ -174,9 +187,11 @@ export interface RoomPlayer {
   cardCount: number;
   score: number | null;
   eliminated: boolean;
+  roundForfeited: boolean;
+  consecutiveTimeouts: number;
 }
 export interface LastAction {
-  type: GameCommand['type'] | 'turn:timeout';
+  type: GameCommand['type'] | 'turn:timeout' | 'round:forfeit';
   playerId: string;
   automatic: boolean;
   at: string;
@@ -206,6 +221,7 @@ export interface RoomSnapshot {
     deadlineAt: string;
     stockCount: number;
     discardTop: PlayingCard | null;
+    discardPile: PlayingCard[];
   };
 }
 export interface CommandReceipt {

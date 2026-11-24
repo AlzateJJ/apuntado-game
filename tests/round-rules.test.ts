@@ -9,8 +9,9 @@ import {
   points,
 } from '../apps/server/src/game/rules/evaluation.js';
 import { variantCatalog } from '../apps/server/src/game/rules/catalog.js';
+import { settleInactivity } from '../apps/server/src/game/rules/inactivity.js';
 import type { RuleProfile } from '../apps/server/src/game/rules/model.js';
-import { card, full433, full55, touch5, suit10 } from './helpers/rules-fixtures.js';
+import { card, full433, full55, touch5, suit10, loose } from './helpers/rules-fixtures.js';
 const profile: RuleProfile = {
   profile_id: 'apuntado-v2',
   mode: 'apuntado',
@@ -22,6 +23,20 @@ const profile: RuleProfile = {
 };
 const classic = variantCatalog('classic-v2'),
   apuntado = variantCatalog('apuntado-v2');
+test('inactivity applies the normal elimination threshold without rewarding the round survivor', () => {
+  const result = settleInactivity(
+    [
+      { id: 'absent', hand: loose(), score: -25 },
+      { id: 'survivor', hand: full433(2), score: 0 },
+    ],
+    'survivor',
+    profile,
+  );
+  assert.equal(result.players[0]!.after, -101);
+  assert.equal(result.players[0]!.eliminated, true);
+  assert.equal(result.players[1]!.delta, 0);
+  assert.equal(result.winnerId, 'survivor');
+});
 const roster = (hand = full433(), score = 0, other = full433(2), otherScore = 0) => [
   { id: 'a', hand, score },
   { id: 'b', hand: other, score: otherScore },

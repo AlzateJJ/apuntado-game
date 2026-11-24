@@ -46,15 +46,17 @@ export async function loadTable(
   ).rows[0];
   if (!round) throw new Error('Open round missing');
   const roster = (
-    await client.query<{ player_id: string }>(
-      `SELECT rp.player_id FROM round_participation rp JOIN participation p USING(game_id,player_id)
+    await client.query<{ player_id: string; forfeited: boolean }>(
+      `SELECT rp.player_id,rp.forfeited FROM round_participation rp JOIN participation p USING(game_id,player_id)
     WHERE rp.game_id=$1 AND rp.round_no=$2 ORDER BY p.seat`,
       [gameId, round.round_no],
     )
-  ).rows.map((row) => row.player_id);
+  ).rows;
+  const ids = roster.map((row) => row.player_id);
   const state: TableState = {
-    players: roster,
-    hands: Object.fromEntries(roster.map((id) => [id, []])),
+    players: ids,
+    forfeited: roster.filter((row) => row.forfeited).map((row) => row.player_id),
+    hands: Object.fromEntries(ids.map((id) => [id, []])),
     stock: [],
     discard: [],
     turnPlayerId: round.turn_player_id,
@@ -132,6 +134,13 @@ export async function snapshot(
   const table = game.status === 'active' ? await loadTable(client, game.game_id) : null;
   const state = table?.state;
   const history = await readHistory(client, game.game_id);
+  const activity = (
+    await client.query(
+      `SELECT player_id,timeout_streak,forfeited FROM round_participation WHERE game_id=$1
+     AND round_no=(SELECT max(round_no) FROM round WHERE game_id=$1)`,
+      [game.game_id],
+    )
+  ).rows;
   return {
     id: game.game_id,
     name: game.name,
@@ -148,6 +157,10 @@ export async function snapshot(
       cardCount: state?.hands[row.player_id]?.length ?? 0,
       score: game.mode === 'apuntado' ? row.score : null,
       eliminated: row.eliminated_at_round !== null,
+      roundForfeited:
+        activity.find((entry) => entry.player_id === row.player_id)?.forfeited ?? false,
+      consecutiveTimeouts:
+        activity.find((entry) => entry.player_id === row.player_id)?.timeout_streak ?? 0,
     })),
     hand: (state?.hands[playerId] ?? []).map((id) => catalog.get(id)!),
     turnSeconds: game.turn_seconds,
@@ -169,6 +182,7 @@ export async function snapshot(
             deadlineAt: new Date(state.deadlineAt).toISOString(),
             stockCount: state.stock.length,
             discardTop: catalog.get(state.discard.at(-1) ?? 0) ?? null,
+            discardPile: state.discard.map((id) => catalog.get(id)!),
           }
         : null,
   };

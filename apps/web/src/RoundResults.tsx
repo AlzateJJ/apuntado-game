@@ -2,13 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import type { PlayingCard, RoomSnapshot, RoundReport } from '@apuntado/contracts';
 import { fetchRoundReport, sendGameCommand } from './session';
 
-const closures = { combinaciones: 'combinaciones', pintas: 'diez pintas', toque: 'toque' };
+const closures = {
+  combinaciones: 'combinaciones',
+  pintas: 'diez pintas',
+  toque: 'toque',
+  inactivity: 'inactividad',
+};
 const explanations = {
   'classic-close': 'Cierre 4-3-3',
   combinations: 'Cierre por combinaciones',
   suit: 'Diez cartas del mismo palo',
   touch: 'Toque aceptado, sin premio',
   'minimum-penalty': 'Menor descuento posible',
+  inactivity: 'Ronda perdida por tres turnos automáticos consecutivos',
+  'last-in-round': 'Ganó la ronda por inactividad, sin premio de cierre',
 };
 const groupNames = { group: 'Grupo', run: 'Escalera', suit: 'Mismo palo' };
 const suits = { C: '♣', D: '♦', H: '♥', S: '♠' };
@@ -31,12 +38,15 @@ function EvidenceCards({ cards }: { cards: PlayingCard[] }) {
 }
 export function RoundEvidence({ report }: { report: RoundReport }) {
   const actor = report.players.find((player) => player.id === report.actorId)!;
+  const roundWinner = report.players.find((player) => player.id === report.roundWinnerId);
   const scored = report.players.some((player) => player.delta !== null);
   return (
     <section className="round-evidence" aria-label={`Acta de ronda ${report.number}`}>
       <div className="eyebrow">RONDA {report.number} · ACTA CONFIRMADA</div>
       <h2>
-        {actor.displayName} cerró por {closures[report.closure]}
+        {report.closure === 'inactivity'
+          ? `${roundWinner?.displayName} ganó la ronda por inactividad`
+          : `${actor.displayName} cerró por ${closures[report.closure]}`}
       </h2>
       <p className="muted">
         Las manos de esta ronda ya son públicas. Cada carta aparece una sola vez en su evaluación.
@@ -66,9 +76,11 @@ export function RoundEvidence({ report }: { report: RoundReport }) {
                   <td>
                     {player.eliminated
                       ? 'Eliminado'
-                      : player.id === report.winnerId
-                        ? 'Ganador'
-                        : 'Activo'}
+                      : player.roundForfeited
+                        ? 'Perdió esta ronda'
+                        : player.id === report.winnerId
+                          ? 'Ganador'
+                          : 'Activo'}
                   </td>
                 </tr>
               ))}
@@ -81,7 +93,10 @@ export function RoundEvidence({ report }: { report: RoundReport }) {
           <article className="player-evidence" key={player.id}>
             <h3>{player.displayName}</h3>
             <p>
-              {!scored && player.id !== report.actorId
+              {!scored &&
+              player.id !== report.actorId &&
+              report.closure !== 'inactivity' &&
+              !player.roundForfeited
                 ? 'Combinaciones encontradas'
                 : explanations[player.explanation]}
             </p>
@@ -137,11 +152,15 @@ export function RoundOutcome({
             : 'Una nueva mano nos espera.'}
         </h2>
         <p>
-          {room.mode === 'classic'
-            ? 'El cierre 4-3-3 termina la partida Clásica, sin puntaje acumulado.'
-            : winner
-              ? 'Victoria por alcanzar +51 puntos o quedar como único jugador activo.'
-              : 'Se conservan los puntos. Quienes llegaron a −101 o menos quedan fuera del próximo reparto.'}
+          {report.closure === 'inactivity'
+            ? room.mode === 'classic'
+              ? 'La partida Clásica termina al quedar un solo jugador en la ronda.'
+              : 'La ronda termina por inactividad. No se otorga premio de cierre; se descuentan los sobrantes de quienes perdieron la ronda.'
+            : room.mode === 'classic'
+              ? 'El cierre 4-3-3 termina la partida Clásica, sin puntaje acumulado.'
+              : winner
+                ? 'Victoria por alcanzar +51 puntos o quedar como único jugador activo.'
+                : 'Se conservan los puntos. Quienes llegaron a −101 o menos quedan fuera del próximo reparto.'}
         </p>
         {room.status === 'finished' ? (
           <button

@@ -79,7 +79,7 @@ test('two isolated players choose a mode, deal, play a turn and recover their pr
     await actor.getByRole('group', { name: 'Tu mano' }).getByRole('button').first().click();
     await actor.getByRole('button', { name: 'Descartar carta seleccionada' }).click();
     await expect(actor.getByRole('group', { name: 'Tu mano' }).getByRole('button')).toHaveCount(10);
-    await actor.getByRole('button', { name: 'Terminar turno' }).click();
+    await expect(actor.getByRole('button', { name: 'Terminar turno' })).toHaveCount(0);
     await expect(
       spectator.getByRole('heading', { name: 'Es tu turno', exact: true }),
     ).toBeVisible();

@@ -77,6 +77,165 @@ const base = (room: RoomSnapshot) => ({
   roundNo: room.round!.number,
   turnNo: room.round!.turnNo,
 });
+async function manualTurn(gameId: string, viewer: string) {
+  let view = (await games.current(viewer))!;
+  const actor = view.round!.turnPlayerId;
+  await games.execute(actor, { type: 'turn:draw', ...base(view), source: 'stock' });
+  view = (await games.current(actor))!;
+  await games.execute(actor, {
+    type: 'turn:discard',
+    ...base(view),
+    cardNo: view.hand.at(-1)!.cardNo,
+  });
+  now += 2000;
+  assert.equal(await games.expireGame(gameId), true);
+}
+async function expireTarget(gameId: string, target: string) {
+  let view = (await games.current(target))!;
+  for (let i = 0; view.round!.turnPlayerId !== target && i < 6; i++) {
+    await manualTurn(gameId, target);
+    view = (await games.current(target))!;
+  }
+  assert.equal(view.round!.turnPlayerId, target);
+  now = Date.parse(view.round!.deadlineAt);
+  return games.expireGame(gameId);
+}
+
+test('three consecutive own timeouts forfeit only the round; Apuntado keeps the seat and resets next round', async () => {
+  const { ids, gameId } = await playing(2);
+  const absent = ids[1]!,
+    survivor = ids[0]!;
+  for (let i = 1; i <= 2; i++) {
+    await expireTarget(gameId, absent);
+    const view = (await games.current(absent))!;
+    assert.equal(view.status, 'active');
+    assert.equal(view.players.find((p) => p.id === absent)!.consecutiveTimeouts, i);
+  }
+  const restarted = new GameService(pool, { now: () => now });
+  assert.equal(
+    (await restarted.current(absent))!.players.find((p) => p.id === absent)!.consecutiveTimeouts,
+    2,
+  );
+  await expireTarget(gameId, absent);
+  const result = (await games.current(survivor))!;
+  assert.equal(result.status, 'between-rounds');
+  assert.equal(result.result!.closure, 'inactivity');
+  assert.equal(result.result!.roundWinnerId, survivor);
+  assert.equal(result.result!.winnerId, null);
+  assert.equal(result.result!.players.find((p) => p.id === survivor)!.delta, 0);
+  const lost = result.result!.players.find((p) => p.id === absent)!;
+  assert.equal(lost.roundForfeited, true);
+  assert.equal(lost.delta, lost.penalty === 0 ? 0 : -lost.penalty);
+  assert.equal(await games.expireGame(gameId), false);
+  await games.execute(survivor, {
+    type: 'round:next',
+    operationId: randomUUID(),
+    gameId,
+    expectedVersion: result.version,
+  });
+  const next = (await games.current(absent))!;
+  assert.equal(next.round!.number, 2);
+  assert.equal(next.hand.length, 10);
+  assert.ok(next.players.every((p) => !p.roundForfeited && p.consecutiveTimeouts === 0));
+});
+
+test('manual discard resets consecutive timeouts and normal two-second transitions never penalize', async () => {
+  const { ids, gameId } = await playing();
+  const target = ids[1]!;
+  await expireTarget(gameId, target);
+  await expireTarget(gameId, target);
+  await manualTurn(gameId, target); // Opponent.
+  await manualTurn(gameId, target); // Previously absent player completes a turn.
+  let view = (await games.current(target))!;
+  assert.equal(view.players.find((p) => p.id === target)!.consecutiveTimeouts, 0);
+  assert.equal(view.lastAction!.automatic, false);
+  for (let i = 0; i < 2; i++) await expireTarget(gameId, target);
+  view = (await games.current(target))!;
+  assert.equal(view.status, 'active');
+  assert.equal(view.players.find((p) => p.id === target)!.consecutiveTimeouts, 2);
+});
+
+test('three-player rounds skip forfeited seats, keep hands private and transfer an inactive host', async () => {
+  const { ids, gameId } = await playing(3, 'classic');
+  const absent = ids[0]!;
+  for (let i = 0; i < 3; i++) await expireTarget(gameId, absent);
+  let view = (await games.current(absent))!;
+  assert.equal(view.status, 'active');
+  assert.equal(view.hostId, ids[1]);
+  assert.equal(view.result, null);
+  assert.equal(view.hand.length, 10);
+  const frozen = view.hand;
+  await assert.rejects(
+    games.execute(absent, { type: 'turn:draw', ...base(view), source: 'stock' }),
+    { code: 'ROUND_FORFEITED' },
+  );
+  const outsider = await player();
+  await assert.rejects(
+    games.execute(outsider, { type: 'room:join', operationId: randomUUID(), code: view.code }),
+    { code: 'ROOM_STARTED' },
+  );
+  for (let i = 0; i < 4; i++) {
+    assert.notEqual((await games.current(absent))!.round!.turnPlayerId, absent);
+    await manualTurn(gameId, absent);
+  }
+  view = (await games.current(absent))!;
+  assert.deepEqual(view.hand, frozen);
+  for (let i = 0; i < 3; i++) await expireTarget(gameId, ids[1]!);
+  const final = (await games.current(ids[2]!))!;
+  assert.equal(final.status, 'finished');
+  assert.equal(final.result!.winnerId, ids[2]);
+  assert.ok(final.result!.players.every((p) => p.delta === null));
+  await integrity(gameId);
+});
+
+test('discard-and-close settles atomically and an invalid declaration rolls the discard back', async () => {
+  for (const mode of ['classic', 'apuntado'] as const) {
+    const setup = await prepareClose(mode);
+    await pool.query("UPDATE round SET phase='draw' WHERE game_id=$1 AND status='open'", [
+      setup.gameId,
+    ]);
+    let view = (await games.current(setup.actor))!;
+    await games.execute(setup.actor, { type: 'turn:draw', ...base(view), source: 'stock' });
+    view = (await games.current(setup.actor))!;
+    const valid = {
+      type: 'turn:discard' as const,
+      ...base(view),
+      cardNo: view.hand.at(-1)!.cardNo,
+      closure: 'combinaciones' as const,
+    };
+    await assert.rejects(games.execute(setup.actor, { ...valid, cardNo: view.hand[0]!.cardNo }), {
+      code: 'INVALID_CLOSE',
+    });
+    assert.deepEqual(await games.current(setup.actor), view);
+    const receipt = await games.execute(setup.actor, valid);
+    assert.deepEqual(await games.execute(setup.actor, valid), receipt);
+    const settled = (await games.current(setup.actor))!;
+    assert.equal(settled.result!.closure, 'combinaciones');
+    assert.equal(settled.result!.roundWinnerId, setup.actor);
+  }
+});
+
+test('public discard snapshots match the pile exactly and exclude held and stock cards', async () => {
+  const { ids, room, gameId } = await playing();
+  const top = room.round!.discardTop!;
+  const actor = room.round!.turnPlayerId;
+  await games.execute(actor, { type: 'turn:draw', ...base(room), source: 'discard' });
+  const drawn = (await games.current(actor))!;
+  assert.ok(drawn.hand.some((card) => card.cardNo === top.cardNo));
+  assert.equal(drawn.round!.discardPile.length, 0);
+  await games.execute(actor, {
+    type: 'turn:discard',
+    ...base(drawn),
+    cardNo: drawn.hand[0]!.cardNo,
+  });
+  const views = await Promise.all(ids.map((id) => games.current(id)));
+  assert.deepEqual(views[0]!.round!.discardPile, views[1]!.round!.discardPile);
+  const pile = views[0]!.round!.discardPile;
+  assert.equal(pile.length, 1);
+  for (const view of views)
+    assert.ok(view!.hand.every((card) => !pile.some((p) => p.cardNo === card.cardNo)));
+  await integrity(gameId);
+});
 async function integrity(gameId: string) {
   const rows = (
     await pool.query('SELECT card_no,zone,owner_id FROM card_position WHERE game_id=$1', [gameId])
@@ -612,14 +771,21 @@ test('competing discards apply once; replay works after the turn advances', asyn
   const discarded = (await games.current(actor))!;
   assert.equal(discarded.hand.length, 10);
   assert.equal(discarded.round!.phase, 'decision');
-  await games.execute(actor, { type: 'turn:pass', ...base(discarded) });
+  await assert.rejects(games.execute(actor, { type: 'turn:pass', ...base(discarded) }), {
+    code: 'TURN_ADVANCING',
+  });
+  assert.equal(Date.parse(discarded.round!.deadlineAt), now + 2000);
+  now += 1999;
+  assert.equal(await games.expireGame(room.id), false);
+  now++;
+  assert.equal(await games.expireGame(room.id), true);
   assert.deepEqual(await games.execute(actor, drawCommand), receipt);
   await integrity(room.id);
   const after = (await games.current(actor))!;
   assert.equal(after.round!.turnNo, 2);
   assert.equal(after.hand.length, 10);
 });
-test('timeouts in draw, discard and decision finish exactly one turn at 30 seconds', async () => {
+test('timeouts and the two-second discard transition finish exactly one turn at their deadline', async () => {
   for (const phase of ['draw', 'discard', 'decision']) {
     const { room } = await playing();
     const actor = room.round!.turnPlayerId;
@@ -645,7 +811,11 @@ test('timeouts in draw, discard and decision finish exactly one turn at 30 secon
     const after = (await games.current(actor))!;
     assert.equal(after.hand.length, 10);
     assert.equal(after.round!.turnNo, 2);
-    assert.equal(after.lastAction!.automatic, true);
+    assert.equal(after.lastAction!.automatic, phase !== 'decision');
+    assert.equal(
+      after.players.find((p) => p.id === actor)!.consecutiveTimeouts,
+      phase === 'decision' ? 0 : 1,
+    );
     assert.equal(after.version, current.version + 1);
     await integrity(room.id);
     assert.equal(

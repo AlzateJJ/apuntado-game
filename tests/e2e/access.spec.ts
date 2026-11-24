@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, openNavigation } from './fixtures.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 
@@ -30,7 +30,8 @@ test('guest connects by websocket and survives a page reload', async ({ page, co
   const refreshed = page.waitForResponse((r) => r.url().endsWith('/api/auth/refresh'));
   await page.reload();
   expect((await (await refreshed).json()).player.id).toBe(player.id);
-  await expect(page.getByRole('heading', { name: 'Hola, Invitado de prueba.' })).toBeVisible();
+  await openNavigation(page);
+  await expect(page.getByText('Invitado de prueba', { exact: true })).toBeVisible();
   await expect(page.getByText('Conexión activa', { exact: true })).toBeVisible();
   expect(sockets.length).toBeGreaterThanOrEqual(2);
   expect(sockets.every((url) => url.includes('transport=websocket'))).toBe(true);
@@ -51,6 +52,7 @@ test('register, log out, reject a bad password, and sign in with the same accoun
   await page.getByLabel('Contraseña', { exact: true }).fill('una frase larga y segura');
   await page.getByRole('button', { name: 'Crear mi cuenta' }).click();
   await expect(page.getByText('Conexión activa', { exact: true })).toBeVisible();
+  await openNavigation(page);
   await page.getByRole('button', { name: 'Cerrar sesión' }).click();
   await expect(page.getByRole('heading', { name: 'Qué bueno verte.' })).toBeVisible();
   await page.getByLabel('Correo electrónico').fill(email.toUpperCase());
@@ -59,7 +61,8 @@ test('register, log out, reject a bad password, and sign in with the same accoun
   await expect(page.getByRole('alert')).toContainText('no coinciden');
   await page.getByLabel('Contraseña', { exact: true }).fill('una frase larga y segura');
   await page.getByRole('button', { name: 'Entrar a Apuntado' }).click();
-  await expect(page.getByRole('heading', { name: 'Hola, Mariana.' })).toBeVisible();
+  await openNavigation(page);
+  await expect(page.getByText('Mariana', { exact: true })).toBeVisible();
   await expect(page.getByText('Conexión activa', { exact: true })).toBeVisible();
 });
 test('multiple tabs renew safely and logout reaches both', async ({ page, context }) => {
@@ -74,6 +77,7 @@ test('multiple tabs renew safely and logout reaches both', async ({ page, contex
   await Promise.all([page.reload(), other.reload()]);
   await expect(page.getByText('Conexión activa', { exact: true })).toBeVisible();
   await expect(other.getByText('Conexión activa', { exact: true })).toBeVisible();
+  await openNavigation(page);
   await page.getByRole('button', { name: 'Cerrar sesión' }).click();
   await expect(page.getByRole('heading', { name: 'Qué bueno verte.' })).toBeVisible();
   await expect(other.getByRole('heading', { name: 'Qué bueno verte.' })).toBeVisible();
@@ -86,7 +90,7 @@ test('connection recovers after transport loss', async ({ page, harness }, info)
   await page.getByRole('button', { name: 'Entrar como invitado', exact: true }).click();
   await expect(page.getByText('Conexión activa', { exact: true })).toBeVisible();
   for (const client of Object.values(harness.application.io.engine.clients)) client.close();
-  await expect(page.getByText('Conexión interrumpida', { exact: true })).toBeVisible();
+  await expect(page.getByText('Sin conexión', { exact: true })).toBeVisible();
   await expect(page.getByText('Conexión activa', { exact: true })).toBeVisible({ timeout: 10000 });
   await page.screenshot({ path: `.local/connected-${info.project.name}.png`, fullPage: true });
 });

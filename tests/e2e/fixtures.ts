@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
@@ -50,3 +51,15 @@ export const test = base.extend<{}, { harness: Harness }>({
 });
 
 export { expect };
+export async function openNavigation(page: Page) {
+  await expect(page.locator('.workspace')).toBeVisible();
+  const menu = page.getByRole('button', { name: 'Abrir menú', exact: true });
+  if (await menu.isVisible()) await menu.click();
+}
+export async function navigate(page: Page, name: string) {
+  await openNavigation(page);
+  await page
+    .getByRole('navigation', { name: 'Navegación principal' })
+    .getByRole('button', { name, exact: true })
+    .click();
+}

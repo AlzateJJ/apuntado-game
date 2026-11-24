@@ -70,6 +70,12 @@ Verificación local del 24 de noviembre de 2026: se compiló la imagen `runtime`
 
 Verificación en Railway del 24 de noviembre de 2026: el primer arranque falló con `relation "auth_session" does not exist` porque no había Pre-deploy Command. Se guardaron en el panel la migración previa y `/api/ready`, y se dejaron vacíos los comandos personalizados de build/start. El despliegue `775bf7ca-8327-48a9-9703-2c58c3f81ae5`, basado en el commit `23a950b`, terminó con `Deployment successful`; backend y PostgreSQL aparecen `Online`. El servicio aún figura como `Unexposed service`, por lo que esto no verifica acceso público ni partidas desde Internet. Antes del siguiente cambio de código compartido, ampliar los Watch Paths actuales, limitados a `/apps/server/**`.
 
+## Actualización de interfaz e inactividad del 24 de noviembre
+
+El usuario confirmó que el primer despliegue completo ya funciona. Esta actualización añade `1795500000000-round-inactivity.cjs` (quinta migración), contratos nuevos y lógica de servidor, además del frontend. Publicar primero el backend con `node scripts/migrate.mjs` en Pre-deploy Command y verificar `/api/ready`, que ahora comprueba las columnas de inactividad. Publicar después el frontend. No basta con desplegar solo Vercel. Los Watch Paths de Railway deben incluir `apps/server/**`, `packages/contracts/**`, `database/**`, `scripts/**`, `Dockerfile`, `package.json` y `package-lock.json`.
+
+La migración conserva partidas, posiciones y resultados existentes; inicializa en cero las rachas de inactividad. Para probar sin tocar producción, la suite crea esquemas temporales en la base `_test`. El orden manual y el silencio se guardan en cada navegador. No se agregaron dependencias, variables ni permisos del proveedor.
+
 ## Operación
 
 - `GET /api/health`: proceso vivo. `GET /api/ready`: conexión y esquema necesarios disponibles.

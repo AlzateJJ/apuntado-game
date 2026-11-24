@@ -71,7 +71,7 @@ test('phase-two upgrade reconstructs the original starter across seat gaps and w
     for (const row of rows) assert.equal(row.initial_player_id, expected.get(row.game_id));
     assert.equal(rows.length, 3);
     await runner(settings);
-    assert.equal((await pool.query('SELECT * FROM schema_migrations')).rowCount, 4);
+    assert.equal((await pool.query('SELECT * FROM schema_migrations')).rowCount, 5);
   } finally {
     await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     await pool.end();

@@ -6,10 +6,14 @@ import {
   type GameCommand,
   type PlayingCard,
   type RoomSnapshot,
+  type Closure,
 } from '@apuntado/contracts';
 import type { RootState } from './store';
 import { sendGameCommand, retryGameCommand, syncGame } from './session';
-import { RoundHistory, RoundOutcome } from './RoundResults';
+import { RoundOutcome } from './RoundResults';
+import { SoundButton, useTurnWarning } from './Sound';
+import { SortableHand } from './SortableHand';
+import { DiscardPile } from './DiscardPile';
 
 const suits = {
   C: { symbol: '♣', name: 'tréboles' },
@@ -188,21 +192,23 @@ function RoomHeader({ room }: { room: RoomSnapshot }) {
         </div>
         <h1>{room.name}</h1>
       </div>
-      <div className="invite-code">
-        <span>CÓDIGO DE SALA</span>
-        <strong data-testid="room-code">{room.code}</strong>
-        <button
-          type="button"
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(room.code)
-              .then(() => setCopied(true))
-              .catch(() => setCopied(false));
-          }}
-        >
-          {copied ? 'Copiado' : 'Copiar código'}
-        </button>
-      </div>
+      {room.status === 'waiting' && (
+        <div className="invite-code">
+          <span>CÓDIGO DE SALA</span>
+          <strong data-testid="room-code">{room.code}</strong>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(room.code)
+                .then(() => setCopied(true))
+                .catch(() => setCopied(false));
+            }}
+          >
+            {copied ? 'Copiado' : 'Copiar código'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -226,6 +232,11 @@ function Roster({ room, playerId }: { room: RoomSnapshot; playerId: string }) {
               {player.id === room.hostId ? 'Anfitrión' : 'Jugador'}
               {room.round ? ` · ${player.cardCount} cartas` : ''}
               {player.eliminated ? ' · Eliminado' : ''}
+              {player.roundForfeited
+                ? ' · Perdió la ronda por inactividad'
+                : player.consecutiveTimeouts > 0
+                  ? ` · ${player.consecutiveTimeouts}/3 turnos automáticos`
+                  : ''}
             </span>
           </div>
           {player.score !== null && (
@@ -295,21 +306,17 @@ function WaitingRoom({
   );
 }
 function useRemaining(room: RoomSnapshot, receivedAt: number, roundTripMs: number) {
-  const [remaining, setRemaining] = useState(30);
+  const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
-    if (!room.round) return;
-    const deadline =
-      receivedAt +
-      Date.parse(room.round.deadlineAt) -
-      Date.parse(room.serverTime) -
-      roundTripMs / 2;
-    const update = () =>
-      setRemaining(Math.max(0, Math.ceil((deadline - performance.now()) / 1000)));
-    update();
-    const timer = setInterval(update, 100);
+    const timer = setInterval(() => setNow(performance.now()), 100);
     return () => clearInterval(timer);
-  }, [room.round?.deadlineAt, room.serverTime, receivedAt, roundTripMs]);
-  return remaining;
+  }, []);
+  const deadline =
+    receivedAt + Date.parse(room.round!.deadlineAt) - Date.parse(room.serverTime) - roundTripMs / 2;
+  return Math.min(
+    room.round!.phase === 'decision' ? 2 : room.turnSeconds,
+    Math.max(0, Math.ceil((deadline - now) / 1000)),
+  );
 }
 function Table({
   room,
@@ -325,15 +332,24 @@ function Table({
   roundTripMs: number;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
-  const [ordered, setOrdered] = useState(false);
+  const [closure, setClosure] = useState<Closure | ''>('');
   const round = room.round!;
   const mine = round.turnPlayerId === playerId;
   const eliminated = room.players.find((player) => player.id === playerId)?.eliminated;
+  const forfeited = room.players.find((player) => player.id === playerId)?.roundForfeited;
   const remaining = useRemaining(room, receivedAt, roundTripMs);
+  useTurnWarning(
+    `${room.id}:${round.number}:${round.turnNo}`,
+    remaining,
+    mine && !eliminated && !forfeited && round.phase !== 'decision',
+  );
   const turnPlayer = room.players.find((player) => player.id === round.turnPlayerId)!;
   useEffect(() => {
     setSelected(null);
   }, [round.turnNo, round.phase, room.id]);
+  useEffect(() => {
+    setClosure('');
+  }, [round.turnNo, room.id]);
   const playable = !disabled && mine && remaining > 0;
   const base = () => ({
     gameId: room.id,
@@ -343,28 +359,29 @@ function Table({
     turnNo: round.turnNo,
   });
   const issue = (command: GameCommand) => void sendGameCommand(command);
-  const hand = ordered
-    ? [...room.hand].sort(
-        (a, b) => a.suit.localeCompare(b.suit) || a.rank - b.rank || a.deck - b.deck,
-      )
-    : room.hand;
   const action = room.lastAction;
   const actor =
     room.players.find((player) => player.id === action?.playerId)?.displayName ?? 'Un jugador';
-  const lastMessage = action?.automatic
-    ? `${actor} agotó el tiempo. El servidor completó su turno.`
-    : action?.type === 'turn:draw'
-      ? `${actor} robó una carta.`
-      : action?.type === 'turn:discard'
-        ? `${actor} descartó una carta.`
-        : action?.type === 'turn:pass'
-          ? `${actor} pasó el turno.`
-          : 'Cartas repartidas. La mesa está lista.';
+  const lastMessage =
+    action?.type === 'round:forfeit'
+      ? `${actor} perdió esta ronda tras tres turnos automáticos consecutivos.`
+      : action?.automatic
+        ? `${actor} agotó el tiempo. El servidor completó su turno.`
+        : action?.type === 'turn:draw'
+          ? `${actor} robó una carta.`
+          : action?.type === 'turn:discard'
+            ? `${actor} descartó una carta.`
+            : action?.type === 'turn:pass'
+              ? `${actor} pasó el turno.`
+              : 'Cartas repartidas. La mesa está lista.';
   return (
     <section className="game-table">
       <RoomHeader room={room} />
       <Roster room={room} playerId={playerId} />
-      <div className="felt">
+      <div className={`felt ${!mine ? 'felt-waiting' : ''}`}>
+        <div className="table-sound">
+          <SoundButton />
+        </div>
         <div className="turn-heading">
           <div>
             <span className="eyebrow">
@@ -373,24 +390,24 @@ function Table({
             <h2>{mine ? 'Es tu turno' : `Turno de ${turnPlayer.displayName}`}</h2>
             <p>
               {!mine
-                ? eliminated
+                ? eliminated || forfeited
                   ? 'Sigues la partida como espectador.'
                   : 'Tu mano permanece privada.'
                 : round.phase === 'draw'
                   ? 'Roba una carta del mazo o del descarte.'
                   : round.phase === 'discard'
                     ? 'Elige una carta de tu mano para descartar.'
-                    : 'Tu descarte está listo. Puedes cerrar, tocar o pasar según la modalidad.'}
+                    : 'Descarte listo. El siguiente jugador podrá jugar en dos segundos.'}
             </p>
           </div>
           <div
-            className={`turn-clock ${remaining <= 5 ? 'urgent' : ''}`}
+            className={`turn-clock ${remaining <= 7 && round.phase !== 'decision' ? 'urgent' : ''}`}
             role="timer"
             aria-label="Tiempo restante"
             data-testid="turn-clock"
           >
             <b>{remaining}</b>
-            <span>SEGUNDOS</span>
+            <span>{round.phase === 'decision' ? 'PAUSA' : 'SEGUNDOS'}</span>
           </div>
         </div>
         <div className="piles">
@@ -406,26 +423,13 @@ function Table({
             <strong>Mazo de robo</strong>
             <span>{round.stockCount} cartas</span>
           </div>
-          <div className="pile">
-            <button
-              className="discard-card"
-              aria-label="Robar del descarte"
-              disabled={!playable || round.phase !== 'draw' || !round.discardTop}
-              onClick={() => issue({ type: 'turn:draw', ...base(), source: 'discard' })}
-            >
-              {round.discardTop ? (
-                <CardFace card={round.discardTop} />
-              ) : (
-                <span className="empty-card">Vacío</span>
-              )}
-            </button>
-            <strong>Descarte</strong>
-            <span>
-              {round.discardTop
-                ? `${rankName(round.discardTop.rank)} de ${suits[round.discardTop.suit].name}`
-                : 'Sin cartas'}
-            </span>
-          </div>
+          <DiscardPile
+            cards={round.discardPile ?? (round.discardTop ? [round.discardTop] : [])}
+            canDraw={playable && round.phase === 'draw'}
+            draw={() => issue({ type: 'turn:draw', ...base(), source: 'discard' })}
+            face={(card) => <CardFace card={card} />}
+            name={cardName}
+          />
         </div>
         <p className="last-action" role="status">
           {lastMessage}
@@ -445,38 +449,64 @@ function Table({
           <p className="muted">
             {eliminated
               ? 'Estás eliminado. Puedes consultar las actas y ver el resultado final.'
-              : 'Solo tú puedes ver estas cartas.'}
+              : forfeited
+                ? 'Perdiste esta ronda por inactividad. Volverás en el próximo reparto si sigues en la partida.'
+                : 'Solo tú puedes ver estas cartas.'}
           </p>
         </div>
-        <button className="text-button" onClick={() => setOrdered(!ordered)}>
-          {ordered ? 'Orden de reparto' : 'Ordenar por palo'}
-        </button>
       </div>
-      <div className="hand" role="group" aria-label="Tu mano">
-        {hand.map((card) => (
-          <button
-            key={card.cardNo}
-            className={`hand-card ${selected === card.cardNo ? 'selected' : ''}`}
-            aria-label={`Seleccionar ${cardName(card)}`}
-            aria-pressed={selected === card.cardNo}
-            disabled={!playable || round.phase !== 'discard'}
-            onClick={() => setSelected(card.cardNo)}
-          >
-            <CardFace card={card} />
-          </button>
-        ))}
-      </div>
+      {!!room.hand.length && (
+        <SortableHand
+          key={`${playerId}:${room.id}:${round.number}`}
+          cards={room.hand}
+          storageKey={`apuntado:hand:${playerId}:${room.id}:${round.number}`}
+          selected={selected}
+          select={setSelected}
+          cardName={cardName}
+          face={(card) => <CardFace card={card} />}
+        />
+      )}
       <div className="turn-controls">
         {mine && round.phase === 'discard' && (
-          <button
-            className="primary-button"
-            disabled={!playable || selected === null}
-            onClick={() => {
-              if (selected !== null) issue({ type: 'turn:discard', ...base(), cardNo: selected });
-            }}
-          >
-            Descartar carta seleccionada
-          </button>
+          <div className="discard-actions">
+            <div className="field">
+              <label htmlFor="discard-intent">Al descartar</label>
+              <select
+                id="discard-intent"
+                value={closure}
+                disabled={!playable}
+                onChange={(event) => setClosure(event.target.value as Closure | '')}
+              >
+                <option value="">Continuar al siguiente turno</option>
+                <option value="combinaciones">Cerrar por combinaciones</option>
+                {room.mode === 'apuntado' && (
+                  <>
+                    <option value="pintas">Cerrar por pintas</option>
+                    <option value="toque">Tocar</option>
+                  </>
+                )}
+              </select>
+            </div>
+            <button
+              className="primary-button"
+              disabled={!playable || selected === null}
+              onClick={() => {
+                if (selected !== null)
+                  issue({
+                    type: 'turn:discard',
+                    ...base(),
+                    cardNo: selected,
+                    ...(closure ? { closure } : {}),
+                  });
+              }}
+            >
+              {closure
+                ? closure === 'toque'
+                  ? 'Descartar y tocar'
+                  : 'Descartar y cerrar'
+                : 'Descartar carta seleccionada'}
+            </button>
+          </div>
         )}
         {mine && round.phase === 'decision' && (
           <div className="decision-actions">
@@ -505,13 +535,7 @@ function Table({
                 </button>
               </>
             )}
-            <button
-              className="primary-button"
-              disabled={!playable}
-              onClick={() => issue({ type: 'turn:pass', ...base() })}
-            >
-              Terminar turno <span aria-hidden="true">→</span>
-            </button>
+            <p role="status">El turno avanza automáticamente en {remaining} s.</p>
           </div>
         )}
         {remaining === 0 && (
@@ -520,9 +544,9 @@ function Table({
           </p>
         )}
         <p className="phase-note">
-          El turno dura 30 segundos en total. Si no terminas, se completa automáticamente con un
-          descarte aleatorio. Si ya descartaste, el vencimiento solo pasa el turno: nunca cierra ni
-          toca.
+          Tienes 30 segundos para robar y descartar. Después de un descarte manual, el turno pasa en
+          dos segundos. Tres turnos propios consecutivos completados por el servidor te hacen perder
+          la ronda.
         </p>
       </div>
       <p className="phase-note">
@@ -583,7 +607,6 @@ export default function GameHub() {
       ) : (
         <p>La partida está en pausa.</p>
       )}
-      {game.room && <RoundHistory key={game.room.id} room={game.room} disabled={disabled} />}
     </div>
   );
 }

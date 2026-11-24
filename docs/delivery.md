@@ -1,13 +1,27 @@
 # Entrega del PMV — 18 de noviembre de 2026
 
-El producto completa el ciclo de ambas modalidades del Entregable 2, con cuenta/invitado y turnos de 30 segundos acordados en este chat. Se ejecuta localmente y tiene un despliegue Docker ensayado. La publicación por Internet queda pendiente de cuentas/proyectos de alojamiento; el usuario confirmó que todavía no dispone de ellos.
+El producto completa el ciclo de ambas modalidades del Entregable 2, con cuenta/invitado y turnos de 30 segundos acordados en este chat. La evidencia original de esta entrega corresponde al ensayo local y Docker del 18 de noviembre. El usuario confirmó después el funcionamiento en Vercel y Railway.
+
+## Actualización del 24 de noviembre de 2026
+
+Se incorporaron música discreta, tic-tac creciente durante los últimos siete segundos propios, silencio persistente, sidebar fijo en escritorio y menú modal en móvil, orden por palo/rango y arrastre con ratón/dedo/teclado. El orden se conserva durante la ronda y al recargar. Una carta nueva o recuperada del descarte se añade al final sin mover las demás. El tablero es gris fuera del turno propio, el código solo aparece en la espera y el descarte tiene pila visual y visor de consulta con fondo desenfocado.
+
+El descarte manual avanza el turno en dos segundos sin requerir **Terminar turno**. Se puede declarar cierre/toque antes de descartar, con validación atómica. Tres vencimientos propios consecutivos hacen perder solo la ronda conforme a ADR-10; el contador persiste en PostgreSQL, se reinicia con un descarte manual o un nuevo reparto, y el anfitrión inactivo cede el control. Cuentas pueden recuperar su asiento desde otro dispositivo; invitados necesitan su sesión original. Ningún tercero ocupa un asiento de una partida iniciada.
+
+Validación de esta actualización:
+
+- Formato, tipos, arquitectura y compilación aprobados; 69 pruebas de lógica e integración aprobadas.
+- Se ejecutaron los 30 escenarios de navegador en escritorio y móvil. Después de ajustar la espera del menú en la prueba de ingreso y ampliar la regresión de cartas que vuelven del descarte, los cuatro escenarios afectados se repitieron y aprobaron. Incluyen ratón, gesto táctil mediante CDP, teclado, cuatro turnos con orden estable, recarga, visor de solo lectura, audio real de Web Audio instrumentado y recuperación de cuenta en un contexto sin cookies compartidas. La emulación móvil no sustituye una prueba en un teléfono físico.
+- Piloto local actualizado: 10 salas, 60 conexiones, 720 comandos y 4.320/4.320 avisos, sin errores ni duplicados. p95 de confirmación: 110,303 ms; p95 de commit a destinatario: 347,931 ms. [Resultado registrado](evidence/load-results-2026-11-24.json). No representa latencia por Internet.
+
+Los cambios están preparados en el repositorio local. Su publicación requiere backend, quinta migración y frontend, en ese orden; ver la guía de despliegue. No se ejecutó esta actualización sobre la base de Railway durante las pruebas.
 
 ## Demostración
 
 1. Abrir `http://127.0.0.1:5173` para desarrollo o `http://localhost:3100` para la versión compilada en Docker. Usar estos nombres distintos mantiene separadas sus sesiones.
 2. Entrar con una cuenta. Abrir otro perfil/incógnito y entrar como invitado. Las pestañas normales comparten identidad.
 3. Crear sala, elegir Clásica o Apuntado, compartir código, unirse y repartir. Se admiten 2–6 jugadores.
-4. Robar del mazo/descarte, seleccionar carta y descartar. Pasar o declarar un cierre válido antes de vencer el tiempo. Un cierre inválido explica el motivo y no permite robar otra vez.
+4. Robar del mazo o con **Robar del descarte**, seleccionar carta y descartar. El turno pasa automáticamente dos segundos después. Para cerrar o tocar, elegir la intención antes del descarte. Una declaración inválida explica el motivo y conserva las once cartas para corregirla.
 5. Dejar vencer un turno: el servidor completa las acciones pendientes con descarte aleatorio, sin tocar ni cerrar.
 6. Cerrar una ronda válida. El acta muestra las manos, combinaciones, sobrantes y, en Apuntado, anterior/cambio/total.
 7. En Apuntado, repartir otra ronda y consultar las actas anteriores. Los eliminados observan sin recibir cartas. Clásica termina en su primer cierre válido.
