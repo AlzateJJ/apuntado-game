@@ -21,6 +21,12 @@ const suits = {
   H: { symbol: '♥', name: 'corazones' },
   S: { symbol: '♠', name: 'picas' },
 };
+const discardIntents = [
+  { value: '', label: 'Continuar al siguiente turno' },
+  { value: 'combinaciones', label: 'Cerrar por combinaciones' },
+  { value: 'pintas', label: 'Cerrar por pintas' },
+  { value: 'toque', label: 'Tocar' },
+] as const;
 const rankName = (rank: number) => ({ 1: 'A', 11: 'J', 12: 'Q', 13: 'K' })[rank] ?? String(rank);
 const cardName = (card: PlayingCard) =>
   `${rankName(card.rank)} de ${suits[card.suit].name}, copia ${card.deck}`;
@@ -472,24 +478,28 @@ function Table({
       <div className="turn-controls">
         {mine && round.phase === 'discard' && (
           <div className="discard-actions">
-            <div className="field">
-              <label htmlFor="discard-intent">Al descartar</label>
-              <select
-                id="discard-intent"
-                value={closure}
-                disabled={!playable}
-                onChange={(event) => setClosure(event.target.value as Closure | '')}
-              >
-                <option value="">Continuar al siguiente turno</option>
-                <option value="combinaciones">Cerrar por combinaciones</option>
-                {room.mode === 'apuntado' && (
-                  <>
-                    <option value="pintas">Cerrar por pintas</option>
-                    <option value="toque">Tocar</option>
-                  </>
-                )}
-              </select>
-            </div>
+            <fieldset className="discard-intent" disabled={!playable}>
+              <legend>Al descartar</legend>
+              <div className="discard-intent-options">
+                {discardIntents
+                  .filter(
+                    ({ value }) =>
+                      room.mode === 'apuntado' || value === '' || value === 'combinaciones',
+                  )
+                  .map(({ value, label }) => (
+                    <label key={value} className={closure === value ? 'chosen' : ''}>
+                      <input
+                        type="radio"
+                        name="discard-intent"
+                        value={value}
+                        checked={closure === value}
+                        onChange={() => setClosure(value)}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+              </div>
+            </fieldset>
             <button
               className="primary-button"
               disabled={!playable || selected === null}

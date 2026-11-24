@@ -10,3 +10,10 @@ export function moveCard(order: number[], card: number, target: number) {
   result.splice(to, 0, card);
   return result;
 }
+export function insertCard(order: number[], card: number, before: number | null) {
+  if (!order.includes(card) || before === card || (before !== null && !order.includes(before)))
+    return order;
+  const result = order.filter((id) => id !== card);
+  result.splice(before === null ? result.length : result.indexOf(before), 0, card);
+  return result.every((id, index) => id === order[index]) ? order : result;
+}

@@ -99,13 +99,75 @@
 }
 .discard-actions {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 16px;
-  flex-wrap: wrap;
+  width: 100%;
 }
-.discard-actions .field {
+.discard-intent {
   margin: 0;
-  min-width: 240px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.discard-intent legend {
+  padding: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.discard-intent-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.discard-intent-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 1px solid #d9ddce;
+  border-radius: 10px;
+  background: #fffefa;
+  color: #5d705a;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.discard-intent-options input {
+  appearance: none;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #a4b398;
+  border-radius: 50%;
+  background: #fffefa;
+  box-shadow: none;
+  cursor: inherit;
+}
+.discard-intent-options input:checked {
+  border-color: #28513f;
+  background: #28513f;
+  box-shadow: inset 0 0 0 3px #fffefa;
+}
+.discard-intent-options label:hover {
+  border-color: #8eaa7b;
+}
+.discard-intent-options label.chosen {
+  border-color: #8eaa7b;
+  background: #edf1e4;
+  color: #204c3f;
+  font-weight: 600;
+}
+.discard-intent-options label:has(input:focus-visible) {
+  outline: 2px solid #8eaa7b;
+  outline-offset: 3px;
+}
+.discard-intent:disabled label {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .discard-actions .primary-button {
   width: auto;
@@ -545,6 +607,10 @@
   font-size: 11px;
   margin: 0;
 }
+.sortable-hand,
+.sortable-hand .hand-card {
+  position: relative;
+}
 .sortable-hand .hand-card {
   touch-action: none;
   user-select: none;
@@ -556,9 +622,33 @@
   cursor: grabbing;
   transform: translateY(-8px);
 }
-.sortable-hand .hand-card.drop-target {
-  outline: 3px dashed #b48a40;
-  transform: translateY(-5px);
+.sortable-hand.is-dragging .hand-card:not(.dragging) {
+  transform: none;
+}
+.sortable-hand.is-dragging .hand-card.insertion-left {
+  transform: translateX(calc(var(--hand-gap) * -0.25));
+}
+.sortable-hand.is-dragging .hand-card.insertion-right {
+  transform: translateX(calc(var(--hand-gap) * 0.25));
+}
+.sortable-hand .hand-card[data-insertion-edge]::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  border-radius: 2px;
+  background: #b45d46;
+  pointer-events: none;
+  z-index: 2;
+}
+.sortable-hand .hand-card[data-insertion-edge='before']::after {
+  left: calc(var(--hand-gap) * -0.75);
+  transform: translateX(-50%);
+}
+.sortable-hand .hand-card[data-insertion-edge='after']::after {
+  right: calc(var(--hand-gap) * -0.75);
+  transform: translateX(50%);
 }
 .help-page,
 .history-page {
@@ -616,7 +706,7 @@
     margin-right: 22px;
   }
   .workspace .hand {
-    gap: 5px;
+    --hand-gap: 5px;
   }
   .workspace .hand-card {
     height: 100px;
@@ -626,6 +716,17 @@
   }
 }
 @media (max-width: 900px) {
+  .discard-intent-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .discard-intent-options label {
+    gap: 8px;
+    padding: 11px 10px;
+  }
+  .discard-actions .primary-button {
+    width: 100%;
+    max-width: none;
+  }
   .workspace-body {
     margin-left: 0;
   }

@@ -149,13 +149,61 @@ async function play(page: Page) {
   await page.getByRole('button', { name: 'Descartar carta seleccionada' }).click();
   await expect(hand(page).getByRole('button')).toHaveCount(10);
 }
-async function drag(page: Page, context: BrowserContext, mobile: boolean) {
+async function drag(
+  page: Page,
+  context: BrowserContext,
+  mobile: boolean,
+  from = 0,
+  to = 2,
+  side: 'before' | 'after' = 'after',
+  cancel = false,
+) {
   const buttons = hand(page).getByRole('button');
-  await buttons.first().scrollIntoViewIfNeeded();
-  const a = (await buttons.first().boundingBox())!,
-    b = (await buttons.nth(2).boundingBox())!;
+  await hand(page).scrollIntoViewIfNeeded();
+  const a = (await buttons.nth(from).boundingBox())!,
+    b = (await buttons.nth(to).boundingBox())!;
   const start = { x: a.x + a.width / 2, y: a.y + a.height / 2 };
-  const end = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  const end = { x: b.x + b.width * (side === 'before' ? 0.25 : 0.75), y: b.y + b.height / 2 };
+  const boundary = to + (side === 'after' ? 1 : 0);
+  const left = boundary > 0 ? buttons.nth(boundary - 1) : null;
+  const right = boundary < (await buttons.count()) ? buttons.nth(boundary) : null;
+  const sameRow =
+    left &&
+    right &&
+    (await left.evaluate((element) => (element as HTMLElement).offsetTop)) ===
+      (await right.evaluate((element) => (element as HTMLElement).offsetTop));
+  const originalGap = await hand(page).evaluate((element) =>
+    parseFloat(getComputedStyle(element).columnGap),
+  );
+  const verifyInsertion = async () => {
+    const marker = hand(page).locator('[data-insertion-edge]');
+    await expect(marker).toHaveCount(1);
+    await expect(marker).toHaveAttribute('data-insertion-edge', sameRow ? 'before' : side);
+    if (sameRow) {
+      await expect
+        .poll(async () => {
+          const l = (await left!.boundingBox())!,
+            r = (await right!.boundingBox())!;
+          return r.x - l.x - l.width;
+        })
+        .toBeCloseTo(originalGap * 1.5, 1);
+      const l = (await left!.boundingBox())!,
+        r = (await right!.boundingBox())!;
+      const lineX = await marker.evaluate(
+        (element) =>
+          element.getBoundingClientRect().left +
+          parseFloat(getComputedStyle(element, '::after').left),
+      );
+      expect(lineX).toBeCloseTo((l.x + l.width + r.x) / 2, 1);
+    }
+    if (from === 0 && to === 2 && !cancel) {
+      await mkdir('.local', { recursive: true });
+      await hand(page).screenshot({
+        path: `.local/hand-insertion-${mobile ? 'mobile' : 'desktop'}.png`,
+        scale: 'css',
+      });
+    }
+  };
   if (mobile) {
     const cdp = await context.newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent', {
@@ -173,14 +221,21 @@ async function drag(page: Page, context: BrowserContext, mobile: boolean) {
           },
         ],
       });
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await verifyInsertion();
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: cancel ? 'touchCancel' : 'touchEnd',
+      touchPoints: [],
+    });
     await cdp.detach();
   } else {
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     await page.mouse.move(end.x, end.y, { steps: 10 });
+    await verifyInsertion();
+    if (cancel) await page.keyboard.press('Escape');
     await page.mouse.up();
   }
+  await expect(hand(page).locator('[data-insertion-edge]')).toHaveCount(0);
 }
 
 test('sidebar, pointer sorting, retained order, two-second turns and read-only discard gallery', async ({
@@ -218,6 +273,14 @@ test('sidebar, pointer sorting, retained order, two-second turns and read-only d
     const expected = [...before];
     expected.splice(0, 1);
     expected.splice(2, 0, before[0]!);
+    await expect.poll(() => order(page)).toEqual(expected);
+    await drag(page, context, info.project.name === 'mobile', 2, 0, 'before');
+    await expect.poll(() => order(page)).toEqual(before);
+    await drag(page, context, info.project.name === 'mobile', 0, before.length - 1);
+    await expect.poll(() => order(page)).toEqual([...before.slice(1), before[0]!]);
+    await drag(page, context, info.project.name === 'mobile', before.length - 1, 2, 'before');
+    await expect.poll(() => order(page)).toEqual(expected);
+    await drag(page, context, info.project.name === 'mobile', 0, 2, 'after', true);
     await expect.poll(() => order(page)).toEqual(expected);
     await page.reload();
     await expect.poll(() => order(page)).toEqual(expected);

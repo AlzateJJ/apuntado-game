@@ -591,9 +591,10 @@
   margin: 0;
 }
 .hand {
+  --hand-gap: 9px;
   display: grid;
   grid-template-columns: repeat(11, minmax(0, 1fr));
-  gap: 9px;
+  gap: var(--hand-gap);
   align-items: start;
   min-height: 124px;
 }
@@ -648,7 +649,7 @@
 }
 @media (max-width: 1000px) {
   .hand {
-    gap: 6px;
+    --hand-gap: 6px;
   }
   .hand-card {
     height: 100px;
@@ -831,7 +832,7 @@
   }
   .hand {
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 9px 6px;
+    gap: 9px var(--hand-gap);
     min-height: 0;
   }
   .hand-card {
