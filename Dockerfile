@@ -9,7 +9,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# A separate, one-shot migration image. Runtime does not ship development tools.
+# A separate, one-shot migration image for local Compose rehearsals.
 FROM build AS migrate
 USER node
 CMD ["node", "scripts/migrate.mjs"]
@@ -22,6 +22,9 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=3001 SERVE_WEB=true
 WORKDIR /app
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/scripts/check-node.mjs /app/scripts/migrate.mjs ./scripts/
+COPY --from=build --chown=node:node /app/database/migrations ./database/migrations
+COPY --from=build --chown=node:node /app/database/schema-baseline.sql /app/database/schema-phase1.sql ./database/
 COPY --from=build --chown=node:node /app/apps/server/package.json ./apps/server/package.json
 COPY --from=build --chown=node:node /app/apps/server/dist ./apps/server/dist
 COPY --from=build --chown=node:node /app/apps/web/package.json ./apps/web/package.json
