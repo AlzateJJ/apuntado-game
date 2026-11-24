@@ -63,3 +63,11 @@ export async function navigate(page: Page, name: string) {
     .getByRole('button', { name, exact: true })
     .click();
 }
+export async function openAccount(page: Page) {
+  await expect(page.locator('.workspace')).toBeVisible();
+  const drawer = page.getByRole('dialog', { name: 'Menú de Apuntado', exact: true });
+  const trigger = { name: 'Abrir cuenta de usuario', exact: true };
+  if (await drawer.isVisible()) await drawer.getByRole('button', trigger).click();
+  else await page.getByRole('button', trigger).click();
+  await expect(page.getByRole('button', { name: 'Mi cuenta', exact: false })).toBeVisible();
+}

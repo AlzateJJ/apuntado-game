@@ -116,15 +116,59 @@
 .room-form .field {
   margin-top: 20px;
 }
-.room-form select {
-  width: 100%;
-  padding: 11px;
+.capacity-options {
+  min-width: 0;
+  padding: 0;
+  margin: 22px 0 0;
+  border: 0;
+}
+.capacity-options legend {
+  padding: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.capacity-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+}
+.capacity-buttons label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 46px;
   border: 1px solid #d9ddce;
+  border-radius: 9px;
   background: #fffefa;
-  color: #28493e;
-  border-radius: 7px;
-  font: inherit;
-  font-size: 13px;
+  color: #6d7e66;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.capacity-buttons input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.capacity-buttons label:hover {
+  border-color: #8eaa7b;
+}
+.capacity-buttons label.chosen {
+  background: #28513f;
+  color: #fffdf4;
+  border-color: #28513f;
+}
+.capacity-buttons label:has(input:focus-visible) {
+  outline: 2px solid #8eaa7b;
+  outline-offset: 3px;
+}
+.capacity-options:disabled label {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .mode-options {
   border: 0;

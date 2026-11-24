@@ -112,21 +112,24 @@ function RoomForms({ disabled }: { disabled: boolean }) {
               <span>Partida acumulativa</span>
             </label>
           </fieldset>
-          <div className="field">
-            <label htmlFor="capacity">Número máximo de jugadores</label>
-            <select
-              id="capacity"
-              value={capacity}
-              onChange={(event) => setCapacity(Number(event.target.value))}
-              disabled={disabled}
-            >
+          <fieldset className="capacity-options" disabled={disabled}>
+            <legend>Número máximo de jugadores</legend>
+            <div className="capacity-buttons">
               {[2, 3, 4, 5, 6].map((number) => (
-                <option key={number} value={number}>
-                  {number} jugadores
-                </option>
+                <label key={number} className={capacity === number ? 'chosen' : ''}>
+                  <input
+                    type="radio"
+                    name="capacity"
+                    value={number}
+                    checked={capacity === number}
+                    onChange={() => setCapacity(number)}
+                    aria-label={`${number} jugadores`}
+                  />
+                  <span aria-hidden="true">{number}</span>
+                </label>
               ))}
-            </select>
-          </div>
+            </div>
+          </fieldset>
           <button className="primary-button" disabled={disabled}>
             Crear sala <span aria-hidden="true">↗</span>
           </button>

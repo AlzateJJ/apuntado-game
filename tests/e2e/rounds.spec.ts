@@ -32,7 +32,7 @@ for (const mode of ['Clásica', 'Apuntado'] as const)
       const name = `Cierre ${randomUUID().slice(0, 6)}`;
       await guest(page, name, harness.url);
       await page.getByRole('radio', { name: new RegExp(mode) }).check();
-      await page.getByLabel('Número máximo de jugadores').selectOption('2');
+      await page.getByRole('radio', { name: '2 jugadores', exact: true }).check();
       await page.getByRole('button', { name: 'Crear sala' }).click();
       const code = await page.getByTestId('room-code').innerText();
       await guest(other, `Compañero ${randomUUID().slice(0, 6)}`, harness.url);

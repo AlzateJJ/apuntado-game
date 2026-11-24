@@ -8,6 +8,8 @@ Se incorporaron música discreta, tic-tac creciente durante los últimos siete s
 
 El descarte manual avanza el turno en dos segundos sin requerir **Terminar turno**. Se puede declarar cierre/toque antes de descartar, con validación atómica. Tres vencimientos propios consecutivos hacen perder solo la ronda conforme a ADR-10; el contador persiste en PostgreSQL, se reinicia con un descarte manual o un nuevo reparto, y el anfitrión inactivo cede el control. Cuentas pueden recuperar su asiento desde otro dispositivo; invitados necesitan su sesión original. Ningún tercero ocupa un asiento de una partida iniciada.
 
+La revisión de interfaz añade selector de capacidad con botones de 2 a 6 jugadores y menú de cuenta inspirado en Historias clínicas: desplegable sobre el perfil en escritorio y panel inferior desde el avatar en móvil. **Mi cuenta** muestra identidad, tipo de acceso y sonido; **Cerrar sesión** conserva la revocación existente. El correo se entrega únicamente en la respuesta privada de autenticación, separado de la identidad pública. La carta superior del descarte ahora roba al pulsarla y el botón inferior **Ver cartas descartadas** abre la consulta. Estos ajustes requieren publicar backend y frontend, sin migraciones adicionales.
+
 Validación de esta actualización:
 
 - Formato, tipos, arquitectura y compilación aprobados; 69 pruebas de lógica e integración aprobadas.
@@ -21,7 +23,7 @@ Los cambios están preparados en el repositorio local. Su publicación requiere 
 1. Abrir `http://127.0.0.1:5173` para desarrollo o `http://localhost:3100` para la versión compilada en Docker. Usar estos nombres distintos mantiene separadas sus sesiones.
 2. Entrar con una cuenta. Abrir otro perfil/incógnito y entrar como invitado. Las pestañas normales comparten identidad.
 3. Crear sala, elegir Clásica o Apuntado, compartir código, unirse y repartir. Se admiten 2–6 jugadores.
-4. Robar del mazo o con **Robar del descarte**, seleccionar carta y descartar. El turno pasa automáticamente dos segundos después. Para cerrar o tocar, elegir la intención antes del descarte. Una declaración inválida explica el motivo y conserva las once cartas para corregirla.
+4. Pulsar el mazo o la carta superior del descarte para robar, seleccionar carta y descartar. **Ver cartas descartadas** abre el visor de consulta. El turno pasa automáticamente dos segundos después del descarte. Para cerrar o tocar, elegir la intención antes del descarte. Una declaración inválida explica el motivo y conserva las once cartas para corregirla.
 5. Dejar vencer un turno: el servidor completa las acciones pendientes con descarte aleatorio, sin tocar ni cerrar.
 6. Cerrar una ronda válida. El acta muestra las manos, combinaciones, sobrantes y, en Apuntado, anterior/cambio/total.
 7. En Apuntado, repartir otra ronda y consultar las actas anteriores. Los eliminados observan sin recibir cartas. Clásica termina en su primer cierre válido.

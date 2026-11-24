@@ -31,9 +31,9 @@ En un equipo con **Node 24 LTS + npm y Docker Compose**, los mismos comandos se 
 3. **Invitado**: entrar únicamente con un nombre. Dos invitados con el mismo nombre son identidades distintas.
 4. Ver **Conexión activa** después de autenticar y confirmar la comunicación de ida y vuelta.
 5. Recargar o abrir otra pestaña: se conserva la identidad mediante una cookie privada.
-6. Cerrar sesión: se revocan la credencial y todas las conexiones de esa sesión. Un invitado que sale necesita crear otro acceso.
-7. Crear una sala, elegir modalidad/capacidad y compartir su código. El anfitrión inicia con al menos dos jugadores.
-8. Robar del mazo o con **Robar del descarte**, seleccionar una carta y descartarla: el siguiente turno comienza automáticamente después de dos segundos. Pulsar la pila abre un visor de consulta, sin robar.
+6. Abrir la flecha junto al usuario y elegir **Mi cuenta** o **Cerrar sesión**. En móvil, el avatar del header abre un panel inferior con las mismas opciones. Mi cuenta muestra nombre, correo (solo al propietario), tipo de acceso y preferencia de sonido. Cerrar sesión revoca la credencial y todas las conexiones de esa sesión; un invitado que sale necesita crear otro acceso.
+7. Crear una sala, elegir modalidad y capacidad con los botones **2–6**, y compartir su código. El anfitrión inicia con al menos dos jugadores.
+8. Pulsar el mazo o la carta superior del descarte para robar, seleccionar una carta y descartarla: el siguiente turno comienza automáticamente después de dos segundos. El botón **Ver cartas descartadas**, debajo de la pila, abre el visor de consulta incluso fuera de tu turno.
 9. Dejar vencer los 30 segundos: el servidor completa robo/descarte/pase según la fase, sin hacer un segundo descarte si ya ocurrió.
 10. Antes de descartar, elegir **Cerrar por combinaciones**; en Apuntado también puedes cerrar por pintas o tocar. La intención y el descarte se validan juntos; una declaración inválida conserva las once cartas y el plazo para corregirla.
 11. Consultar las manos y la liquidación de cada ronda. En Apuntado, el anfitrión reparte la siguiente hasta que haya ganador; los eliminados siguen como espectadores.

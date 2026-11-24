@@ -23,6 +23,7 @@ const equal = (a: string, b: string) =>
   a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 type IdentityRow = { player_id: string; display_name: string; kind: 'account' | 'guest' };
 type SessionRow = IdentityRow & {
+  email_normalized: string | null;
   session_id: string;
   refresh_token_hash: string;
   previous_token_hash: string | null;
@@ -35,7 +36,7 @@ const identity = (row: IdentityRow): PlayerIdentity => ({
   displayName: row.display_name,
   kind: row.kind,
 });
-const sessionSelect = `SELECT s.*, p.display_name, CASE WHEN a.account_id IS NULL THEN 'guest' ELSE 'account' END AS kind
+const sessionSelect = `SELECT s.*, p.display_name, a.email_normalized, CASE WHEN a.account_id IS NULL THEN 'guest' ELSE 'account' END AS kind
   FROM auth_session s JOIN player p USING(player_id) LEFT JOIN account a USING(player_id)`;
 export interface Authenticated {
   player: PlayerIdentity;
@@ -79,6 +80,7 @@ export class AuthService {
     sessionId: string,
     refreshToken: string,
     sessionExpiresAt: Date,
+    email: string | null,
   ): Promise<IssuedSession> {
     const expiresAt = Math.min(
       Math.floor(Date.now() / 1000) + this.config.ACCESS_TOKEN_SECONDS,
@@ -93,13 +95,22 @@ export class AuthService {
       .setExpirationTime(expiresAt)
       .sign(this.key);
     return {
-      body: { player, accessToken, expiresAt: new Date(expiresAt * 1000).toISOString() },
+      body: {
+        player,
+        account: email === null ? null : { email },
+        accessToken,
+        expiresAt: new Date(expiresAt * 1000).toISOString(),
+      },
       refreshToken,
       sessionExpiresAt,
     };
   }
 
-  private async newSession(client: PoolClient, player: PlayerIdentity) {
+  private async newSession(
+    client: PoolClient,
+    player: PlayerIdentity,
+    email: string | null = null,
+  ) {
     const sessionId = randomUUID();
     const refreshToken = `${sessionId}.${randomBytes(32).toString('base64url')}`;
     const expiresAt = new Date(Date.now() + this.config.SESSION_DAYS * 86400000);
@@ -107,7 +118,7 @@ export class AuthService {
       'INSERT INTO auth_session(session_id,player_id,refresh_token_hash,expires_at) VALUES($1,$2,$3,$4)',
       [sessionId, player.id, hash(refreshToken), expiresAt],
     );
-    return this.issue(player, sessionId, refreshToken, expiresAt);
+    return this.issue(player, sessionId, refreshToken, expiresAt, email);
   }
 
   async guest(input: GuestInput) {
@@ -142,7 +153,7 @@ export class AuthService {
           'INSERT INTO account(account_id,player_id,email_normalized,password_hash) VALUES($1,$2,$3,$4)',
           [randomUUID(), player.id, input.email, passwordHash],
         );
-        return this.newSession(client, player);
+        return this.newSession(client, player, input.email);
       });
     } catch (error) {
       if ((error as { code?: string }).code === '23505')
@@ -152,8 +163,10 @@ export class AuthService {
   }
 
   async login(input: LoginInput) {
-    const result = await this.pool.query<IdentityRow & { password_hash: string }>(
-      `SELECT p.*, a.password_hash, 'account' AS kind FROM account a JOIN player p USING(player_id) WHERE email_normalized=$1`,
+    const result = await this.pool.query<
+      IdentityRow & { password_hash: string; email_normalized: string }
+    >(
+      `SELECT p.*, a.password_hash, a.email_normalized, 'account' AS kind FROM account a JOIN player p USING(player_id) WHERE email_normalized=$1`,
       [input.email],
     );
     const row = result.rows[0];
@@ -163,7 +176,9 @@ export class AuthService {
     );
     if (!row || !valid)
       throw new AppError(401, 'INVALID_CREDENTIALS', 'El correo o la contraseña no coinciden.');
-    return this.transaction((client) => this.newSession(client, identity(row)));
+    return this.transaction((client) =>
+      this.newSession(client, identity(row), row.email_normalized),
+    );
   }
 
   private sessionId(token: unknown): string {
@@ -211,7 +226,15 @@ export class AuthService {
         'UPDATE auth_session SET previous_token_hash=refresh_token_hash,refresh_token_hash=$2,rotated_at=now() WHERE session_id=$1',
         [sessionId, hash(refreshToken)],
       );
-      return { issued: await this.issue(identity(row), sessionId, refreshToken, row.expires_at) };
+      return {
+        issued: await this.issue(
+          identity(row),
+          sessionId,
+          refreshToken,
+          row.expires_at,
+          row.email_normalized,
+        ),
+      };
     });
     if ('revoked' in outcome && outcome.revoked) this.onRevoke(sessionId);
     if (outcome.error) throw outcome.error;

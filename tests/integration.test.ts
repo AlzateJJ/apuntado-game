@@ -126,6 +126,8 @@ test('account registration normalizes email, hashes password, and returns a priv
   assert.equal(response.status, 201);
   assert.equal(response.body.player.displayName, 'Ana');
   assert.equal(response.body.player.kind, 'account');
+  assert.deepEqual(response.body.account, { email: 'ana@example.com' });
+  assert.equal('email' in response.body.player, false);
   assert.match(response.headers['set-cookie'][0], /HttpOnly/);
   assert.match(response.headers['set-cookie'][0], /SameSite=Lax/);
   assert.equal(response.headers['cache-control'], 'no-store');
@@ -143,6 +145,16 @@ test('account registration normalizes email, hashes password, and returns a priv
     .get('/api/auth/me')
     .set('Authorization', `Bearer ${response.body.accessToken}`);
   assert.deepEqual(me.body.player, response.body.player);
+  assert.ok(!JSON.stringify(me.body).includes('ana@example.com'));
+  const socket = connect(response.body.accessToken);
+  try {
+    const ready = await waitReady(socket);
+    assert.ok(!JSON.stringify(ready).includes('ana@example.com'));
+  } finally {
+    socket.disconnect();
+  }
+  const renewed = await post('refresh', {}, cookieOf(response));
+  assert.deepEqual(renewed.body.account, { email: 'ana@example.com' });
 });
 test('duplicate email rolls back the extra player and login rejects invalid credentials', async () => {
   const beforeCount = (await pool.query('SELECT count(*) FROM player')).rows[0].count;
@@ -167,6 +179,7 @@ test('duplicate email rolls back the extra player and login rejects invalid cred
   });
   assert.equal(good.status, 200);
   assert.equal(good.body.player.kind, 'account');
+  assert.deepEqual(good.body.account, { email: 'ana@example.com' });
 });
 test('validation and CSRF protections reject forged or malformed requests', async () => {
   assert.equal((await post('guest', { displayName: 'X' })).status, 400);
@@ -208,6 +221,7 @@ test('guests persist through refresh and server recreation without creating acco
   const guest = await post('guest', { displayName: 'Visita' });
   assert.equal(guest.status, 201);
   assert.equal(guest.body.player.kind, 'guest');
+  assert.equal(guest.body.account, null);
   assert.equal(
     (await pool.query('SELECT count(*) FROM account WHERE player_id=$1', [guest.body.player.id]))
       .rows[0].count,
@@ -216,6 +230,7 @@ test('guests persist through refresh and server recreation without creating acco
   const renewed = await post('refresh', {}, cookieOf(guest));
   assert.equal(renewed.status, 200);
   assert.deepEqual(renewed.body.player, guest.body.player);
+  assert.equal(renewed.body.account, null);
   assert.notEqual(cookieOf(renewed), cookieOf(guest));
   const restarted = createApplication(config, pool);
   try {

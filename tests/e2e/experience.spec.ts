@@ -1,4 +1,4 @@
-import { test, expect, navigate, openNavigation } from './fixtures.js';
+import { test, expect, navigate, openNavigation, openAccount } from './fixtures.js';
 import type { Page, BrowserContext } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
@@ -11,7 +11,7 @@ async function guest(page: Page, name: string, url: string) {
   await expect(page.getByText('Conexión activa', { exact: true })).toBeVisible();
 }
 async function create(page: Page) {
-  await page.getByLabel('Número máximo de jugadores').selectOption('3');
+  await page.getByRole('radio', { name: '3 jugadores', exact: true }).check();
   await page.getByRole('button', { name: 'Crear sala' }).click();
   return page.getByTestId('room-code').innerText();
 }
@@ -334,7 +334,7 @@ test('an account recovers its seat from an isolated device while outsiders canno
     await guest(phone, 'Cuenta viajera', harness.url);
     await join(phone, code);
     await expect(phone.getByRole('alert')).toContainText('ya comenzó');
-    await openNavigation(phone);
+    await openAccount(phone);
     await phone.getByRole('button', { name: 'Cerrar sesión' }).click();
     await phone.getByLabel('Correo electrónico').fill(email);
     await phone.getByLabel('Contraseña', { exact: true }).fill(password);

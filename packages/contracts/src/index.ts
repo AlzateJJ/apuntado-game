@@ -42,6 +42,7 @@ export interface SessionResponse {
   accessToken: string;
   expiresAt: string;
   player: PlayerIdentity;
+  account: { email: string } | null;
 }
 export interface ApiError {
   error: { code: string; message: string; fields?: Record<string, string[]> };

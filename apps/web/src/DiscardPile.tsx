@@ -27,8 +27,9 @@ export function DiscardPile({
     <div className="pile">
       <button
         className="discard-card discard-stack"
-        aria-label="Ver cartas descartadas"
-        onClick={() => setOpen(true)}
+        aria-label="Robar del descarte"
+        disabled={!canDraw || !cards.length}
+        onClick={draw}
       >
         {cards.length ? (
           cards.slice(-3).map((card) => (
@@ -44,8 +45,8 @@ export function DiscardPile({
       <span>
         {cards.length} {cards.length === 1 ? 'carta' : 'cartas'}
       </span>
-      <button className="pile-draw-button" disabled={!canDraw || !cards.length} onClick={draw}>
-        Robar del descarte
+      <button className="pile-view-button" onClick={() => setOpen(true)}>
+        Ver cartas descartadas
       </button>
       <dialog
         ref={dialog}

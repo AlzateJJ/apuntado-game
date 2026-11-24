@@ -5,8 +5,9 @@ import { logout, reconnect } from './session';
 import GameHub from './GameHub';
 import { RoundHistory } from './RoundResults';
 import { SoundButton } from './Sound';
+import { AccountChevron, AccountIdentity, AccountMenu, AccountPage } from './AccountMenu';
 
-type Section = 'table' | 'history' | 'rules';
+type Section = 'table' | 'history' | 'rules' | 'account';
 const sections: { id: Section; label: string; symbol: string }[] = [
   { id: 'table', label: 'Mi mesa', symbol: '♠' },
   { id: 'history', label: 'Rondas anteriores', symbol: '≡' },
@@ -79,15 +80,18 @@ export default function AppShell() {
   const game = useSelector((state: RootState) => state.game);
   const [section, setSection] = useState<Section>('table');
   const [menu, setMenu] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [mobile, setMobile] = useState(() => matchMedia('(max-width: 900px)').matches);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
+  const main = useRef<HTMLElement>(null);
   useEffect(() => {
     const query = matchMedia('(max-width: 900px)');
     const change = () => {
       setMobile(query.matches);
       setMenu(false);
+      setAccountOpen(false);
     };
     query.addEventListener('change', change);
     return () => query.removeEventListener('change', change);
@@ -99,9 +103,13 @@ export default function AppShell() {
     document.body.classList.add('drawer-open');
     return () => document.body.classList.remove('drawer-open');
   }, [menu, mobile]);
+  useEffect(() => {
+    if (section === 'account') main.current?.querySelector<HTMLElement>('h1[tabindex]')?.focus();
+  }, [section]);
   const choose = (next: Section) => {
     setSection(next);
     setMenu(false);
+    setAccountOpen(false);
   };
   const exit = async () => {
     setLeaving(true);
@@ -114,7 +122,18 @@ export default function AppShell() {
       setLeaving(false);
     }
   };
-  const player = session!.player;
+  const accountControl = (
+    <AccountMenu
+      session={session!}
+      mobile={mobile}
+      open={accountOpen}
+      onOpenChange={setAccountOpen}
+      onAccount={() => choose('account')}
+      onLogout={() => void exit()}
+      leaving={leaving}
+      error={error}
+    />
+  );
   const brand = (
     <button className="brand" onClick={() => choose('table')} aria-label="Apuntado, inicio">
       <span aria-hidden="true">♠</span> apuntado<span className="brand-period">.</span>
@@ -147,31 +166,23 @@ export default function AppShell() {
         </nav>
         <div className="sidebar-bottom">
           <SoundButton label />
-          <div className="sidebar-account">
-            <span className="player-avatar" aria-hidden="true">
-              {player.displayName.slice(0, 1).toUpperCase()}
-            </span>
-            <div>
-              <strong>{player.displayName}</strong>
-              <small>
-                {player.kind === 'guest' ? 'Invitado · este navegador' : 'Tu cuenta de Apuntado'}
-              </small>
+          {mobile ? (
+            <div className="account-area">
+              <button
+                className="account-toggle"
+                aria-label="Abrir cuenta de usuario"
+                aria-haspopup="dialog"
+                onClick={() => {
+                  setMenu(false);
+                  setAccountOpen(true);
+                }}
+              >
+                <AccountIdentity session={session!} />
+                <AccountChevron />
+              </button>
             </div>
-          </div>
-          {error && (
-            <p className="error-banner" role="alert">
-              {error}
-            </p>
-          )}
-          <button
-            className="text-button logout-button"
-            onClick={() => void exit()}
-            disabled={leaving}
-          >
-            {leaving ? 'Saliendo…' : 'Cerrar sesión'}
-          </button>
-          {player.kind === 'guest' && (
-            <p className="guest-reminder">Al cerrar sesión termina el acceso de este invitado.</p>
+          ) : (
+            accountControl
           )}
         </div>
       </div>
@@ -200,7 +211,10 @@ export default function AppShell() {
             <>
               <button
                 className="icon-button"
-                onClick={() => setMenu(true)}
+                onClick={() => {
+                  setAccountOpen(false);
+                  setMenu(true);
+                }}
                 aria-label="Abrir menú"
                 aria-expanded={menu}
                 aria-haspopup="dialog"
@@ -232,8 +246,9 @@ export default function AppShell() {
                   : 'Sin conexión'}
             </span>
           </div>
+          {mobile && accountControl}
         </header>
-        <main className="workspace-main">
+        <main className="workspace-main" ref={main}>
           {notice && (
             <p className="error-banner" role="alert">
               {notice}
@@ -268,6 +283,9 @@ export default function AppShell() {
             </section>
           )}
           {section === 'rules' && <Rules />}
+          {section === 'account' && (
+            <AccountPage session={session!} onTable={() => choose('table')} />
+          )}
         </main>
       </div>
     </div>

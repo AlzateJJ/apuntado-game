@@ -18,6 +18,9 @@
 .discard-view-open {
   overflow: hidden;
 }
+.account-sheet-open {
+  overflow: hidden;
+}
 .discard-stack {
   position: relative;
   isolation: isolate;
@@ -36,7 +39,7 @@
 .stack-layer:last-child {
   transform: rotate(-2deg);
 }
-.pile-draw-button {
+.pile-view-button {
   margin-top: 10px;
   min-height: 36px;
   border: 1px solid #c4d3b677;
@@ -45,10 +48,6 @@
   background: #ffffff12;
   padding: 7px 11px;
   font-size: 10px;
-}
-.pile-draw-button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .discard-dialog {
   width: min(650px, calc(100vw - 32px));
@@ -189,28 +188,237 @@
   margin-top: auto;
   padding: 50px 7px 0;
 }
-.sidebar-account {
+.account-area {
+  position: relative;
+  border-top: 1px solid #dde1d4;
+  margin-top: 18px;
+  padding-top: 12px;
+}
+.account-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
-  border-top: 1px solid #dde1d4;
-  padding-top: 20px;
-  margin-top: 18px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #294e41;
+  text-align: left;
 }
-.sidebar-account strong {
+.account-toggle:hover,
+.account-toggle[aria-expanded='true'] {
+  background: #eef1e7;
+}
+.account-toggle .player-avatar {
+  flex: 0 0 34px;
+  height: 34px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.account-identity {
+  min-width: 0;
+  flex: 1;
+}
+.account-identity strong {
   display: block;
   font-size: 12px;
-  overflow-wrap: anywhere;
 }
-.sidebar-account small {
+.account-identity small {
   display: block;
   font-size: 10px;
   color: #7c8a74;
   margin-top: 3px;
 }
-.logout-button {
-  margin-top: 14px;
+.account-toggle .account-identity > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-chevron {
+  flex-shrink: 0;
+  color: #84917c;
+  margin-right: 3px;
+}
+.account-toggle[aria-expanded='true'] .account-chevron {
+  transform: rotate(180deg);
+}
+.account-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -7px;
+  right: -7px;
+  z-index: 1;
+  padding: 7px;
+  background: #fffefa;
+  border: 1px solid #daddcf;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px #203d3514;
+}
+.account-actions button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 7px;
+  color: #3f6050;
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+}
+.account-actions button:hover {
+  background: #eef1e7;
+}
+.account-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.account-actions svg {
+  flex-shrink: 0;
+}
+.account-actions .guest-reminder {
+  padding: 0 12px 7px;
+}
+.account-actions small {
+  display: block;
+  margin-top: 5px;
   font-size: 11px;
+  color: #7c8a74;
+}
+.mobile-account {
+  flex-shrink: 0;
+}
+.mobile-account .account-toggle {
+  gap: 6px;
+}
+.account-sheet {
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  padding: 0;
+  width: min(100%, 520px);
+  max-width: 100%;
+  max-height: calc(100dvh - 24px);
+  border: 1px solid #dde1d4;
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  color: #203d35;
+  background: #fbfaf5;
+}
+.account-sheet::backdrop {
+  background: #14292266;
+  backdrop-filter: blur(5px);
+}
+.account-sheet-content {
+  padding: 12px 22px max(20px, env(safe-area-inset-bottom));
+}
+.sheet-handle {
+  display: block;
+  width: 38px;
+  height: 4px;
+  border-radius: 9px;
+  background: #c6cdbd;
+  margin: 0 auto 10px;
+}
+.account-sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.account-sheet h2 {
+  margin: 0;
+  font-size: 24px;
+}
+.sheet-profile,
+.profile-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sheet-profile {
+  padding: 22px 0;
+  border-bottom: 1px solid #dde1d4;
+  margin-bottom: 8px;
+}
+.sheet-profile .player-avatar,
+.profile-heading .player-avatar {
+  flex: 0 0 44px;
+  height: 44px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.sheet-profile .account-identity > *,
+.profile-heading .account-identity > * {
+  overflow-wrap: anywhere;
+}
+.account-sheet .account-actions button {
+  min-height: 52px;
+  padding: 14px 0;
+  font-size: 14px;
+}
+.account-sheet .account-logout {
+  margin-top: 8px;
+  border-top: 1px solid #dde1d4;
+  border-radius: 0;
+  color: #a25b47;
+}
+.account-page {
+  max-width: 800px;
+  padding-top: 35px;
+}
+.account-page h1 {
+  margin: 12px 0;
+  font-size: 42px;
+}
+.account-page h1:focus {
+  outline: none;
+}
+.account-intro {
+  margin: 0 0 28px;
+  color: #6e7e66;
+  font-size: 14px;
+}
+.account-panel {
+  margin-bottom: 20px;
+  padding: 26px;
+  border: 1px solid #daddcf;
+  border-radius: 14px;
+  background: #fffefa;
+}
+.account-panel dl {
+  display: grid;
+  gap: 20px;
+  padding-top: 22px;
+  margin: 22px 0;
+  border-top: 1px solid #dde1d4;
+}
+.account-panel dt {
+  color: #7c8a74;
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.account-panel dd {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.account-panel p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #6e7e66;
+}
+.account-panel h2 {
+  font-size: 25px;
+  margin: 0 0 10px;
+}
+.account-back {
+  margin-top: 8px;
 }
 .guest-reminder {
   font-size: 10px;
@@ -439,6 +647,17 @@
   .workspace-connection {
     font-size: 8px;
     gap: 5px;
+  }
+  .workspace-header .workspace-connection > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .account-panel {
+    padding: 22px;
   }
   .workspace-main {
     padding: 0 20px 32px;

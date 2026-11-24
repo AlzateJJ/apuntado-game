@@ -14,7 +14,7 @@ async function guest(page: Page, name: string, url = '/') {
 async function create(page: Page, mode: 'Clásica' | 'Apuntado' = 'Apuntado', capacity = '2') {
   await page.getByLabel('Nombre de la sala').fill('Mesa del encuentro');
   await page.getByRole('radio', { name: new RegExp(mode) }).check();
-  await page.getByLabel('Número máximo de jugadores').selectOption(capacity);
+  await page.getByRole('radio', { name: `${capacity} jugadores`, exact: true }).check();
   await page.getByRole('button', { name: 'Crear sala', exact: false }).click();
   await expect(page.getByTestId('room-code')).toBeVisible();
   return (await page.getByTestId('room-code').innerText()).trim();
