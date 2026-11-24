@@ -28,7 +28,7 @@ Para respaldar un servidor real se debe usar `pg_dump` con un rol y conexión au
 
 ## Publicación prevista: Vercel + Railway
 
-El backend y PostgreSQL están en línea en Railway. Falta generar el dominio público del backend, publicar el frontend en Vercel y verificar el juego con sus dominios reales.
+El backend y PostgreSQL están en línea en Railway. El backend público es `https://apuntadoserver-production.up.railway.app`; falta publicar el frontend en Vercel y verificar el juego con sus dominios reales. El `vercel.json` de la raíz ya está preparado para ese backend.
 
 Railway retiró Config as Code para servicios nuevos. `deploy/railway.json` se conserva como referencia legacy, pero no configura este servicio. Los siguientes ajustes deben guardarse en el panel; una futura automatización debe usar Infrastructure as Code. Consultar la [nota oficial de retirada de Config as Code](https://docs.railway.com/config-as-code).
 
@@ -45,6 +45,24 @@ El comando genera `vercel.json`, sin desplegar ni guardar secretos. Usar Node 24
 
 5. Vercel sirve la web y reescribe `/api/*` hacia Railway. Las cookies se reciben y envían al origen de la web; Socket.IO conecta directamente al backend por WSS, usando su token en memoria. Así se mantiene HTTP de identidad en el mismo origen y se evita depender de cookies de terceros. La configuración debe ensayarse con los dominios reales, encabezados reenviados y bloqueo de cookies de terceros antes de anunciar la URL.
 6. Verificar `/api/ready`, registro/invitado, dos navegadores, un cierre por modalidad, reconexión, renovación de sesión, ausencia de polling y recuperación tras reinicio. Ejecutar el piloto remoto; los tiempos locales no garantizan tiempos por Internet.
+
+### Primer despliegue del frontend en Vercel
+
+Subir primero los commits locales a GitHub. En Vercel → Add New → Project, importar `AlzateJJ/apuntado-game` y elegir la raíz del repositorio (`./`). La configuración de la raíz compila los contratos compartidos y después el frontend.
+
+| Ajuste                                    | Valor                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------ |
+| Framework Preset                          | Other, correspondiente a `framework: null` en `vercel.json`              |
+| Root Directory                            | Raíz del repositorio (`./`)                                              |
+| Node.js Version                           | 24.x                                                                     |
+| Install Command                           | `npm ci`                                                                 |
+| Build Command                             | `npm run build -w @apuntado/contracts && npm run build -w @apuntado/web` |
+| Output Directory                          | `apps/web/dist`                                                          |
+| Variable de compilación `VITE_SOCKET_URL` | `https://apuntadoserver-production.up.railway.app`                       |
+
+`vercel.json` define los comandos, el directorio de salida y las reescrituras. Agregar `VITE_SOCKET_URL` al entorno Production antes del primer Deploy. Si se modifica después, volver a desplegar: Vite incorpora esta variable durante la compilación.
+
+Una vez Vercel asigne el dominio estable de producción, reemplazar `ALLOWED_ORIGINS=https://pendiente.invalid` en las variables del backend de Railway por ese origen HTTPS exacto, sin ruta ni barra final, y aplicar el despliegue de Railway. Hasta entonces el backend rechazará el acceso desde el frontend. Verificar `/api/ready` desde el dominio de Vercel, entrar como invitado, comprobar la conexión en tiempo real y recargar para verificar la sesión. La web usa `/api/*` en su propio origen mediante reescrituras, mientras Socket.IO conecta directamente a Railway.
 
 La configuración de Vercel se basa en [reescrituras externas oficiales](https://vercel.com/docs/routing/rewrites); la imagen sigue el soporte de [Dockerfiles de Railway](https://docs.railway.com/builds/dockerfiles). Las migraciones siguen el [comando previo al despliegue de Railway](https://docs.railway.com/deployments/pre-deploy-command). La selección de URL y transporte utiliza las [opciones oficiales de Socket.IO](https://socket.io/docs/v4/client-options/). Documentación de despliegue revisada el 24 de noviembre de 2026.
 
