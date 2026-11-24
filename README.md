@@ -2,7 +2,7 @@
 
 PMV funcional del Entregable 2: cuentas e invitados, salas por código, Clásica y Apuntado, reparto privado, turnos de **30 segundos**, descarte automático, cierres, actas, puntos, eliminaciones, siguientes rondas y resultado final. Incluye pruebas de navegador, piloto de 60 conexiones y despliegue local reproducible con Docker.
 
-La [guía de entrega](docs/delivery.md) reúne cómo demostrarlo, la trazabilidad y los límites verificados. La [guía de despliegue](docs/deployment.md) explica Docker, respaldos y la publicación en Vercel/Railway. El repositorio ya está conectado a GitHub y el backend se está preparando en Railway; el despliegue público todavía debe verificarse.
+La [guía de entrega](docs/delivery.md) reúne cómo demostrarlo, la trazabilidad y los límites verificados. La [guía de despliegue](docs/deployment.md) explica Docker, respaldos y la publicación en Vercel/Railway. El backend y PostgreSQL ya están en línea en Railway; faltan el dominio público del backend, el frontend en Vercel y la verificación del juego por Internet.
 
 ## Ejecutar en este equipo
 
