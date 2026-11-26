@@ -101,6 +101,305 @@ async function expireTarget(gameId: string, target: string) {
   return games.expireGame(gameId);
 }
 
+const surrenderCommand = (room: RoomSnapshot) => ({
+  type: 'game:surrender' as const,
+  operationId: randomUUID(),
+  gameId: room.id,
+  expectedVersion: room.version,
+});
+
+test('surrender from every turn phase frees the seat and awards the remaining player without a bonus', async () => {
+  for (const mode of ['classic', 'apuntado'] as const) {
+    for (const phase of ['draw', 'discard', 'decision'] as const) {
+      for (const leavesOnOwnTurn of [true, false]) {
+        const { ids, gameId, room } = await playing(2, mode);
+        const actor = room.round!.turnPlayerId;
+        const other = ids.find((id) => id !== actor)!;
+        const leaving = leavesOnOwnTurn ? actor : other;
+        const survivor = leavesOnOwnTurn ? other : actor;
+        if (phase !== 'draw')
+          await games.execute(actor, { type: 'turn:draw', ...base(room), source: 'stock' });
+        if (phase === 'decision') {
+          const drawn = (await games.current(actor))!;
+          await games.execute(actor, {
+            type: 'turn:discard',
+            ...base(drawn),
+            cardNo: drawn.hand.at(-1)!.cardNo,
+          });
+        }
+        // Deliberately stale: a concurrent draw/turn transition must not trap a surrender.
+        const command = surrenderCommand(room);
+        const receipt = await games.execute(leaving, command);
+        assert.deepEqual(await games.execute(leaving, command), receipt);
+        assert.equal(await games.current(leaving), null);
+        const result = (await games.current(survivor))!;
+        assert.equal(result.status, 'finished');
+        assert.deepEqual(result.outcome, { winnerId: survivor, reason: 'abandonment' });
+        assert.equal(result.result!.closure, 'abandonment');
+        assert.equal(
+          result.result!.players.find((p) => p.id === survivor)!.delta,
+          mode === 'classic' ? null : 0,
+        );
+        const lost = result.result!.players.find((p) => p.id === leaving)!;
+        assert.equal(lost.withdrawn, true);
+        assert.equal(lost.explanation, 'withdrawal');
+        for (const p of result.result!.players)
+          assert.equal(p.groups.flatMap((g) => g.cards).length + p.leftovers.length, 10);
+        assert.equal(await games.expireGame(gameId), false);
+        await integrity(gameId);
+        await assert.rejects(
+          games.execute(leaving, { type: 'room:join', operationId: randomUUID(), code: room.code }),
+          { code: 'ROOM_STARTED' },
+        );
+        if (phase === 'draw')
+          await games.execute(leaving, {
+            type: 'room:create',
+            operationId: randomUUID(),
+            name: 'Otra partida',
+            mode,
+            capacity: 2,
+          });
+        else {
+          const newRoom = await waiting(2, mode, 3);
+          await games.execute(leaving, {
+            type: 'room:join',
+            operationId: randomUUID(),
+            code: newRoom.room.code,
+          });
+          assert.equal((await games.current(leaving))!.id, newRoom.gameId);
+        }
+        assert.notEqual((await games.current(leaving))!.id, gameId);
+        assert.deepEqual(
+          await games.execute(leaving, command),
+          receipt,
+          'retry cannot remove the new membership',
+        );
+        assert.notEqual((await games.current(leaving))!.id, gameId);
+      }
+    }
+  }
+});
+
+test('surrender preserves another player’s clock, transfers host, skips the seat and freezes private evidence', async () => {
+  const { ids, gameId, room } = await playing(3);
+  const host = ids[0]!,
+    actor = room.round!.turnPlayerId;
+  await games.execute(actor, { type: 'turn:draw', ...base(room), source: 'stock' });
+  const before = (await games.current(actor))!;
+  const frozen = (await games.current(host))!.hand;
+  await games.execute(host, surrenderCommand(room));
+  let view = (await games.current(actor))!;
+  assert.equal(view.status, 'active');
+  assert.equal(view.hostId, ids[1]);
+  assert.deepEqual(view.round, before.round);
+  assert.deepEqual(view.hand, before.hand);
+  assert.equal(view.result, null);
+  assert.equal(view.players.find((p) => p.id === host)!.withdrawn, true);
+  assert.ok(view.players.every((p) => !('hand' in p)));
+  await games.execute(actor, {
+    type: 'turn:discard',
+    ...base(view),
+    cardNo: view.hand.at(-1)!.cardNo,
+  });
+  now += 2000;
+  await games.expireGame(gameId);
+  view = (await games.current(actor))!;
+  assert.equal(view.round!.turnPlayerId, ids[1]);
+  for (let i = 0; i < 3; i++) await expireTarget(gameId, ids[1]!);
+  const closed = (await games.current(actor))!;
+  const evidence = closed.result!.players.find((p) => p.id === host)!;
+  assert.deepEqual(
+    [...evidence.groups.flatMap((g) => g.cards), ...evidence.leftovers]
+      .map((c) => c.cardNo)
+      .sort((a, b) => a - b),
+    frozen.map((c) => c.cardNo).sort((a, b) => a - b),
+  );
+  assert.equal(evidence.explanation, 'withdrawal');
+  assert.notEqual(closed.outcome?.winnerId, host);
+  await integrity(gameId);
+});
+
+test('surrender on one’s own turn advances to the next eligible seat with a fresh 30-second turn', async () => {
+  const { ids, gameId, room } = await playing(3);
+  const actor = room.round!.turnPlayerId;
+  await games.execute(actor, { type: 'turn:draw', ...base(room), source: 'stock' });
+  now += 5000;
+  await games.execute(actor, surrenderCommand(room));
+  const view = (await games.current(ids[0]!))!;
+  assert.equal(view.round!.turnPlayerId, ids[0]);
+  assert.equal(view.round!.phase, 'draw');
+  assert.equal(view.round!.turnNo, room.round!.turnNo + 1);
+  assert.equal(Date.parse(view.round!.deadlineAt), now + 30000);
+  await manualTurn(gameId, ids[0]!);
+  await manualTurn(gameId, ids[0]!);
+  assert.equal((await games.current(ids[0]!))!.round!.turnPlayerId, ids[0]);
+  await integrity(gameId);
+});
+
+test('leaving between rounds finishes independently of immutable round scores and lets the winner leave', async () => {
+  const setup = await prepareClose();
+  await games.execute(setup.actor, setup.command);
+  const before = (await games.current(setup.actor))!;
+  assert.equal(before.status, 'between-rounds');
+  const survivor = setup.ids.find((id) => id !== setup.actor)!;
+  await games.execute(setup.actor, surrenderCommand(before));
+  const after = (await games.current(survivor))!;
+  assert.equal(after.status, 'finished');
+  assert.deepEqual(after.outcome, { winnerId: survivor, reason: 'abandonment' });
+  assert.deepEqual(after.result, before.result);
+  assert.deepEqual(after.history, before.history);
+  await games.execute(survivor, surrenderCommand(after));
+  assert.equal(await games.current(survivor), null);
+  const row = (
+    await pool.query('SELECT winner_player_id,finish_reason FROM game WHERE game_id=$1', [
+      setup.gameId,
+    ])
+  ).rows[0];
+  assert.deepEqual(row, { winner_player_id: survivor, finish_reason: 'abandonment' });
+});
+
+test('departure before a regular closure cannot win, and subsequent rounds exclude the surrendered seat', async () => {
+  const { ids, gameId } = await playing(3);
+  const [departing, actor, other] = ids as [string, string, string];
+  const used = [...full433(), ...full433(2)];
+  const spare = Array.from({ length: 104 }, (_, i) => i + 1)
+    .filter((id) => !used.includes(id))
+    .slice(0, 10);
+  await arrangeTable(
+    pool,
+    gameId,
+    { [departing]: full433(2), [actor]: full433(), [other]: spare },
+    actor,
+  );
+  await games.execute(departing, surrenderCommand((await games.current(departing))!));
+  const open = (await games.current(actor))!;
+  await games.execute(actor, { type: 'round:close', ...base(open), closure: 'combinaciones' });
+  const closed = (await games.current(actor))!;
+  assert.equal(closed.status, 'between-rounds');
+  assert.equal(closed.hostId, actor);
+  assert.equal(closed.result!.players.find((p) => p.id === departing)!.explanation, 'withdrawal');
+  await games.execute(actor, {
+    type: 'round:next',
+    operationId: randomUUID(),
+    gameId,
+    expectedVersion: closed.version,
+  });
+  const next = (await games.current(actor))!;
+  assert.equal(next.round!.number, 2);
+  assert.equal(next.players.find((p) => p.id === departing)!.cardCount, 0);
+  assert.equal(
+    (
+      await pool.query('SELECT * FROM round_participation WHERE game_id=$1 AND round_no=2', [
+        gameId,
+      ])
+    ).rowCount,
+    2,
+  );
+  assert.deepEqual(
+    await games.report(actor, { requestId: randomUUID(), gameId, roundNo: 1 }),
+    closed.result,
+  );
+});
+
+test('only members can surrender; racing retries and timeout settle once without leaving a stuck game', async () => {
+  const { ids, gameId, room } = await playing(2, 'classic');
+  const command = surrenderCommand(room);
+  await assert.rejects(games.execute(await player(), command), { code: 'NOT_A_MEMBER' });
+  now = Date.parse(room.round!.deadlineAt);
+  const [first, second] = await Promise.all([
+    games.execute(ids[0]!, command),
+    games.execute(ids[0]!, command),
+    games.expireGame(gameId),
+  ]);
+  assert.deepEqual(first, second);
+  assert.equal((await games.current(ids[1]!))!.status, 'finished');
+  assert.equal(
+    (await pool.query('SELECT * FROM round_result WHERE game_id=$1', [gameId])).rowCount,
+    1,
+  );
+  await integrity(gameId);
+});
+
+test('a surrendering host transfers control to a player still participating in the current round', async () => {
+  const { ids, gameId } = await playing(4);
+  for (let i = 0; i < 3; i++) await expireTarget(gameId, ids[1]!);
+  const before = (await games.current(ids[0]!))!;
+  assert.equal(before.players.find((p) => p.id === ids[1])!.roundForfeited, true);
+  await games.execute(ids[0]!, surrenderCommand(before));
+  const next = (await games.current(ids[2]!))!;
+  assert.equal(next.status, 'active');
+  assert.equal(next.hostId, ids[2]);
+  await integrity(gameId);
+});
+
+test('a failed surrender transaction keeps membership, hands, scores and outcome intact for a safe retry', async () => {
+  const { ids, gameId, room } = await playing();
+  const command = surrenderCommand(room);
+  const before = await games.current(ids[0]!);
+  await pool.query(`CREATE FUNCTION reject_surrender() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    RAISE EXCEPTION 'surrender publication failure'; END $$;
+    CREATE TRIGGER fail_surrender BEFORE INSERT ON outbox FOR EACH ROW EXECUTE FUNCTION reject_surrender()`);
+  try {
+    await assert.rejects(games.execute(ids[0]!, command), /surrender publication failure/);
+    assert.deepEqual(await games.current(ids[0]!), before);
+    assert.equal(
+      (await pool.query('SELECT * FROM round_result WHERE game_id=$1', [gameId])).rowCount,
+      0,
+    );
+    assert.equal(
+      (await pool.query('SELECT * FROM score_movement WHERE game_id=$1', [gameId])).rowCount,
+      0,
+    );
+    assert.equal(
+      (
+        await pool.query('SELECT * FROM participation WHERE game_id=$1 AND left_at IS NOT NULL', [
+          gameId,
+        ])
+      ).rowCount,
+      0,
+    );
+  } finally {
+    await pool.query('DROP TRIGGER fail_surrender ON outbox; DROP FUNCTION reject_surrender()');
+  }
+  await games.execute(ids[0]!, command);
+  assert.equal(await games.current(ids[0]!), null);
+  assert.equal((await games.current(ids[1]!))!.status, 'finished');
+});
+
+test('a host can surrender between rounds with three players; remaining players can deal again', async () => {
+  const { ids, gameId } = await playing(3);
+  const [host, nextHost, other] = ids as [string, string, string];
+  const used = [...full433(), ...full433(2)];
+  const spare = Array.from({ length: 104 }, (_, i) => i + 1)
+    .filter((id) => !used.includes(id))
+    .slice(0, 10);
+  await arrangeTable(
+    pool,
+    gameId,
+    { [host]: full433(), [nextHost]: full433(2), [other]: spare },
+    host,
+  );
+  await games.execute(host, {
+    type: 'round:close',
+    ...base((await games.current(host))!),
+    closure: 'combinaciones',
+  });
+  const before = (await games.current(host))!;
+  await games.execute(host, surrenderCommand(before));
+  const after = (await games.current(nextHost))!;
+  assert.equal(after.status, 'between-rounds');
+  assert.equal(after.hostId, nextHost);
+  assert.deepEqual(after.result, before.result);
+  await games.execute(nextHost, {
+    type: 'round:next',
+    operationId: randomUUID(),
+    gameId,
+    expectedVersion: after.version,
+  });
+  assert.equal((await games.current(nextHost))!.round!.number, 2);
+  assert.equal(await games.current(host), null);
+});
+
 test('three consecutive own timeouts forfeit only the round; Apuntado keeps the seat and resets next round', async () => {
   const { ids, gameId } = await playing(2);
   const absent = ids[1]!,
@@ -515,6 +814,17 @@ test('later rounds preserve evidence, rotate the starter and exclude eliminated 
     games.report(await player(), { requestId: randomUUID(), gameId: setup.gameId, roundNo: 1 }),
     { code: 'NOT_A_MEMBER' },
   );
+  const beforeDeparture = (await games.current(middle))!;
+  await games.execute(host, surrenderCommand(beforeDeparture));
+  const afterDeparture = (await games.current(middle))!;
+  assert.equal(await games.current(host), null);
+  assert.equal(afterDeparture.status, 'active');
+  assert.equal(afterDeparture.hostId, middle);
+  assert.deepEqual(afterDeparture.round, beforeDeparture.round);
+  assert.deepEqual(
+    await games.report(middle, { requestId: randomUUID(), gameId: setup.gameId, roundNo: 1 }),
+    firstReport,
+  );
 });
 test('Apuntado ends when the accumulated award crosses +51 and reports stable previous totals', async () => {
   const setup = await playing();
@@ -913,8 +1223,11 @@ test('outbox failures retain committed state and a new publisher retries without
   restarted.publish = async (event, recipients) => {
     published.push({ event, recipients });
   };
-  // Drain bounded batches; each successful publication can be duplicated safely after a crash.
-  for (let index = 0; index < 4; index++) await restarted.flushEvents();
+  // Drain the actual backlog left by preceding scenarios, regardless of suite size.
+  const outstanding = Number(
+    (await pool.query('SELECT count(*) FROM outbox WHERE published_at IS NULL')).rows[0].count,
+  );
+  for (let index = 0; index < Math.ceil(outstanding / 100); index++) await restarted.flushEvents();
   const found = published.find((value) => value.event.gameId === room.id);
   assert.ok(found);
   assert.ok(found.recipients.includes(ids[0]));

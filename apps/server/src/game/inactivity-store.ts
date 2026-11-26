@@ -4,6 +4,7 @@ import type { TableState } from './domain.js';
 import type { GameRow, MemberRow } from './store.js';
 import { settleInactivity } from './rules/inactivity.js';
 import { saveSettlement } from './settlement-store.js';
+import { excludeWithdrawn } from './rules/withdrawal.js';
 
 export async function recordTimeout(
   client: PoolClient,
@@ -41,6 +42,11 @@ export async function recordTimeout(
     score: roster.find((row) => row.player_id === id)!.score,
   }));
   const settled = settleInactivity(players, eligible[0]!, game);
+  excludeWithdrawn(
+    settled,
+    roster.filter((row) => row.surrendered_at).map((row) => row.player_id),
+    game,
+  );
   await saveSettlement(
     client,
     game.game_id,
@@ -51,5 +57,5 @@ export async function recordTimeout(
     settled,
     now,
   );
-  return { forfeited: true, closed: true, finished: settled.winnerId !== null };
+  return { forfeited: true, closed: true, finished: settled.finished === true };
 }

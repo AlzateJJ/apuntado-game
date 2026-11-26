@@ -7,6 +7,7 @@ const closures = {
   pintas: 'diez pintas',
   toque: 'toque',
   inactivity: 'inactividad',
+  abandonment: 'abandono',
 };
 const explanations = {
   'classic-close': 'Cierre 4-3-3',
@@ -15,7 +16,8 @@ const explanations = {
   touch: 'Toque aceptado, sin premio',
   'minimum-penalty': 'Menor descuento posible',
   inactivity: 'Ronda perdida por tres turnos automáticos consecutivos',
-  'last-in-round': 'Ganó la ronda por inactividad, sin premio de cierre',
+  'last-in-round': 'Último jugador de la ronda, sin premio de cierre',
+  withdrawal: 'Abandonó la partida',
 };
 const groupNames = { group: 'Grupo', run: 'Escalera', suit: 'Mismo palo' };
 const suits = { C: '♣', D: '♦', H: '♥', S: '♠' };
@@ -44,9 +46,13 @@ export function RoundEvidence({ report }: { report: RoundReport }) {
     <section className="round-evidence" aria-label={`Acta de ronda ${report.number}`}>
       <div className="eyebrow">RONDA {report.number} · ACTA CONFIRMADA</div>
       <h2>
-        {report.closure === 'inactivity'
-          ? `${roundWinner?.displayName} ganó la ronda por inactividad`
-          : `${actor.displayName} cerró por ${closures[report.closure]}`}
+        {report.closure === 'abandonment'
+          ? roundWinner
+            ? `${roundWinner.displayName} ganó la ronda por abandono`
+            : 'La ronda terminó por abandono'
+          : report.closure === 'inactivity'
+            ? `${roundWinner?.displayName} ganó la ronda por inactividad`
+            : `${actor.displayName} cerró por ${closures[report.closure]}`}
       </h2>
       <p className="muted">
         Las manos de esta ronda ya son públicas. Cada carta aparece una sola vez en su evaluación.
@@ -74,13 +80,15 @@ export function RoundEvidence({ report }: { report: RoundReport }) {
                     <strong>{signed(player.after!)}</strong>
                   </td>
                   <td>
-                    {player.eliminated
-                      ? 'Eliminado'
-                      : player.roundForfeited
-                        ? 'Perdió esta ronda'
-                        : player.id === report.winnerId
-                          ? 'Ganador'
-                          : 'Activo'}
+                    {player.withdrawn
+                      ? 'Abandonó'
+                      : player.eliminated
+                        ? 'Eliminado'
+                        : player.roundForfeited
+                          ? 'Perdió esta ronda'
+                          : player.id === report.winnerId
+                            ? 'Ganador'
+                            : 'Activo'}
                   </td>
                 </tr>
               ))}
@@ -96,6 +104,8 @@ export function RoundEvidence({ report }: { report: RoundReport }) {
               {!scored &&
               player.id !== report.actorId &&
               report.closure !== 'inactivity' &&
+              report.closure !== 'abandonment' &&
+              !player.withdrawn &&
               !player.roundForfeited
                 ? 'Combinaciones encontradas'
                 : explanations[player.explanation]}
@@ -132,7 +142,8 @@ export function RoundOutcome({
   disabled: boolean;
 }) {
   const report = room.result!;
-  const winner = room.players.find((player) => player.id === report.winnerId);
+  const winnerId = room.outcome ? room.outcome.winnerId : report.winnerId;
+  const winner = room.players.find((player) => player.id === winnerId);
   const issue = (type: 'round:next' | 'room:leave') =>
     void sendGameCommand({
       type,
@@ -149,18 +160,26 @@ export function RoundOutcome({
         <h2>
           {winner
             ? `${winner.id === playerId ? '¡Ganaste' : `Ganó ${winner.displayName}`}!`
-            : 'Una nueva mano nos espera.'}
+            : room.status === 'finished'
+              ? 'Partida terminada.'
+              : 'Una nueva mano nos espera.'}
         </h2>
         <p>
-          {report.closure === 'inactivity'
-            ? room.mode === 'classic'
-              ? 'La partida Clásica termina al quedar un solo jugador en la ronda.'
-              : 'La ronda termina por inactividad. No se otorga premio de cierre; se descuentan los sobrantes de quienes perdieron la ronda.'
-            : room.mode === 'classic'
-              ? 'El cierre 4-3-3 termina la partida Clásica, sin puntaje acumulado.'
-              : winner
-                ? 'Victoria por alcanzar +51 puntos o quedar como único jugador activo.'
-                : 'Se conservan los puntos. Quienes llegaron a −101 o menos quedan fuera del próximo reparto.'}
+          {room.outcome?.reason === 'abandonment'
+            ? winner
+              ? 'Gana quien queda como único jugador que sigue en la partida. No se otorga un premio de cierre por abandono.'
+              : 'La partida terminó sin jugadores activos.'
+            : report.closure === 'abandonment'
+              ? 'La ronda terminó por abandono. Se descuentan los sobrantes de quienes perdieron la ronda, sin premio de cierre.'
+              : report.closure === 'inactivity'
+                ? room.mode === 'classic'
+                  ? 'La partida Clásica termina al quedar un solo jugador en la ronda.'
+                  : 'La ronda termina por inactividad. No se otorga premio de cierre; se descuentan los sobrantes de quienes perdieron la ronda.'
+                : room.mode === 'classic'
+                  ? 'El cierre 4-3-3 termina la partida Clásica, sin puntaje acumulado.'
+                  : winner
+                    ? 'Victoria por alcanzar +51 puntos o quedar como único jugador activo.'
+                    : 'Se conservan los puntos. Quienes llegaron a −101 o menos quedan fuera del próximo reparto.'}
         </p>
         {room.status === 'finished' ? (
           <button

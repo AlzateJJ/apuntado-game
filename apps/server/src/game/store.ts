@@ -15,12 +15,15 @@ export interface GameRow extends RuleProfile {
   version: number;
   status: 'waiting' | 'active' | 'paused' | 'cancelled' | 'finished' | 'between-rounds';
   last_action: LastAction | null;
+  winner_player_id: string | null;
+  finish_reason: 'round' | 'abandonment' | null;
 }
 export interface MemberRow {
   player_id: string;
   display_name: string;
   seat: number;
   left_at: Date | null;
+  surrendered_at: Date | null;
   score: number;
   eliminated_at_round: number | null;
   played: boolean;
@@ -29,7 +32,7 @@ export const gameSelect = `SELECT g.*,r.mode,r.turn_seconds,r.combination_reward
 export async function members(client: PoolClient, gameId: string): Promise<MemberRow[]> {
   return (
     await client.query<MemberRow>(
-      `SELECT p.player_id,p.display_name,m.seat,m.left_at,s.score,m.eliminated_at_round,
+      `SELECT p.player_id,p.display_name,m.seat,m.left_at,m.surrendered_at,s.score,m.eliminated_at_round,
       EXISTS(SELECT 1 FROM round_participation rp WHERE rp.game_id=m.game_id AND rp.player_id=m.player_id) AS played
       FROM participation m JOIN current_score s USING(game_id,player_id)
     JOIN player p USING(player_id) WHERE game_id=$1 ORDER BY seat`,
@@ -47,7 +50,7 @@ export async function loadTable(
   if (!round) throw new Error('Open round missing');
   const roster = (
     await client.query<{ player_id: string; forfeited: boolean }>(
-      `SELECT rp.player_id,rp.forfeited FROM round_participation rp JOIN participation p USING(game_id,player_id)
+      `SELECT rp.player_id,(rp.forfeited OR rp.withdrawn) AS forfeited FROM round_participation rp JOIN participation p USING(game_id,player_id)
     WHERE rp.game_id=$1 AND rp.round_no=$2 ORDER BY p.seat`,
       [gameId, round.round_no],
     )
@@ -126,9 +129,7 @@ export async function snapshot(
   playerId: string,
   now: number,
 ): Promise<RoomSnapshot> {
-  const roster = (await members(client, game.game_id)).filter(
-    (row) => !row.left_at || (game.status === 'finished' && row.played),
-  );
+  const roster = (await members(client, game.game_id)).filter((row) => !row.left_at || row.played);
   if (!roster.some((row) => row.player_id === playerId && !row.left_at))
     throw new Error('Snapshot requested outside membership');
   const table = game.status === 'active' ? await loadTable(client, game.game_id) : null;
@@ -157,6 +158,7 @@ export async function snapshot(
       cardCount: state?.hands[row.player_id]?.length ?? 0,
       score: game.mode === 'apuntado' ? row.score : null,
       eliminated: row.eliminated_at_round !== null,
+      withdrawn: row.surrendered_at !== null,
       roundForfeited:
         activity.find((entry) => entry.player_id === row.player_id)?.forfeited ?? false,
       consecutiveTimeouts:
@@ -166,6 +168,10 @@ export async function snapshot(
     turnSeconds: game.turn_seconds,
     serverTime: new Date(now).toISOString(),
     lastAction: game.last_action,
+    outcome:
+      game.status === 'finished'
+        ? { winnerId: game.winner_player_id, reason: game.finish_reason ?? 'round' }
+        : null,
     history,
     result:
       history.length && (game.status === 'between-rounds' || game.status === 'finished')

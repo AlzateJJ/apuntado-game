@@ -157,12 +157,39 @@ test('a lost acknowledgement retries the original operation without creating a s
   await expect(page.getByRole('button', { name: 'Reintentar la misma acción' })).toBeVisible({
     timeout: 9000,
   });
+  await expect(page.getByRole('button', { name: 'Entendido', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Reintentar la misma acción' }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
   const result = await harness.pool.query('SELECT count(*) FROM game WHERE host_player_id=$1', [
     socket.data.identity.player.id,
   ]);
   expect(result.rows[0].count).toBe('1');
+
+  const read = socket.listeners('room:current')[0]!;
+  socket.removeAllListeners('room:current');
+  let reads = 0;
+  let unavailable = true;
+  socket.on('room:current', (request, ack) => {
+    reads++;
+    if (unavailable) {
+      ack({
+        ok: false,
+        code: 'TEMPORARILY_UNAVAILABLE',
+        message: 'No pudimos actualizar la mesa.',
+      });
+      return;
+    }
+    Reflect.apply(read, socket, [request, ack]);
+  });
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  const refresh = page.getByRole('button', { name: 'Actualizar mesa', exact: true });
+  await expect(refresh).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Entendido', exact: true })).toHaveCount(0);
+  unavailable = false;
+  await refresh.click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByTestId('room-code')).toBeVisible();
+  expect(reads).toBeGreaterThanOrEqual(2);
 });
 
 test('the running scheduler completes a disconnected player turn after thirty real seconds', async ({

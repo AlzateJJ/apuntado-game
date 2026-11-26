@@ -76,6 +76,12 @@ El usuario confirmó que el primer despliegue completo ya funciona. Esta actuali
 
 La migración conserva partidas, posiciones y resultados existentes; inicializa en cero las rachas de inactividad. Para probar sin tocar producción, la suite crea esquemas temporales en la base `_test`. El orden manual y el silencio se guardan en cada navegador. No se agregaron dependencias, variables ni permisos del proveedor.
 
+### Abandono voluntario de partida
+
+La opción **Abandonar partida** requiere también `1795500000001-game-withdrawal.cjs` (sexta migración). Publicar primero Railway con la migración previa y comprobar `/api/ready`; publicar después Vercel. El backend reconoce `game:surrender` y conserva tanto las actas anteriores como el ganador de partidas ya terminadas. La migración añade `participation.surrendered_at`, `round_participation.withdrawn`, `game.winner_player_id` y `game.finish_reason`, y amplía los motivos de cierre. No requiere variables ni librerías nuevas. Una pestaña con la versión anterior debe recargarse para mostrar el botón.
+
+Las pruebas de esta actualización usan PostgreSQL temporal en `127.0.0.1:15432`, con `TEST_DATABASE_URL` limitada al proceso, porque Windows reservó el puerto local habitual 54329. No se cambió `.env` ni la base de Railway.
+
 ## Operación
 
 - `GET /api/health`: proceso vivo. `GET /api/ready`: conexión y esquema necesarios disponibles.

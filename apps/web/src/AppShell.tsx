@@ -6,6 +6,7 @@ import GameHub from './GameHub';
 import { RoundHistory } from './RoundResults';
 import { SoundButton } from './Sound';
 import { AccountChevron, AccountIdentity, AccountMenu, AccountPage } from './AccountMenu';
+import { LeaveGame } from './LeaveGame';
 
 type Section = 'table' | 'history' | 'rules' | 'account';
 const sections: { id: Section; label: string; symbol: string }[] = [
@@ -65,6 +66,20 @@ function Rules() {
         </p>
       </article>
       <article>
+        <h2>Abandonar la partida</h2>
+        <p>
+          Puedes rendirte con «Abandonar partida» desde cualquier sección, también entre rondas.
+          Después de confirmar volverás al inicio para crear o unirte a otra sala. La salida es
+          definitiva: no puedes recuperar ese asiento ni entra alguien para reemplazarte.
+        </p>
+        <p>
+          Si queda un solo jugador, gana la partida sin premio de cierre por abandono. Si quedan
+          varios, continúan y otro toma el control si eras anfitrión. En Apuntado, tus cartas se
+          evalúan al terminar la ronda y se descuentan los sobrantes; las rondas ya cerradas
+          conservan sus puntos y actas.
+        </p>
+      </article>
+      <article>
         <h2>Sonido a tu gusto</h2>
         <p>
           El botón del altavoz silencia la música y el reloj. Tu preferencia se guarda en este
@@ -86,6 +101,15 @@ export default function AppShell() {
   const [error, setError] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
   const main = useRef<HTMLElement>(null);
+  const previousRoom = useRef<string | null>(null);
+  useEffect(() => {
+    if (previousRoom.current && game.loaded && !game.room) {
+      setSection('table');
+      setMenu(false);
+      setAccountOpen(false);
+    }
+    previousRoom.current = game.room?.id ?? null;
+  }, [game.room?.id, game.loaded]);
   useEffect(() => {
     const query = matchMedia('(max-width: 900px)');
     const change = () => {
@@ -249,6 +273,7 @@ export default function AppShell() {
           {mobile && accountControl}
         </header>
         <main className="workspace-main" ref={main}>
+          <LeaveGame room={game.room} />
           {notice && (
             <p className="error-banner" role="alert">
               {notice}

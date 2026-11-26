@@ -33,7 +33,7 @@ export async function readReport(
   if (!result) throw new Error('Committed round result missing');
   const entries = (
     await client.query(
-      `SELECT e.*,p.display_name,m.delta,rp.forfeited,
+      `SELECT e.*,p.display_name,m.delta,rp.forfeited,rp.withdrawn,
     COALESCE((SELECT sum(delta) FROM score_movement s WHERE s.game_id=e.game_id AND s.player_id=e.player_id AND s.round_no<e.round_no),0)::integer AS before,
     (pt.eliminated_at_round=e.round_no) IS TRUE AS eliminated
     FROM hand_evaluation e JOIN player p USING(player_id) JOIN participation pt USING(game_id,player_id)
@@ -78,6 +78,7 @@ export async function readReport(
         after: scored ? entry.before + entry.delta : null,
         eliminated: entry.eliminated,
         roundForfeited: entry.forfeited,
+        withdrawn: entry.withdrawn,
       };
     }),
   };
@@ -92,6 +93,7 @@ export async function saveSettlement(
   settled: Settlement,
   now: number,
 ) {
+  const finished = settled.finished || settled.winnerId !== null;
   await client.query(
     `INSERT INTO round_result(game_id,round_no,actor_id,closure,winner_id,next_action,committed_version,closed_at,round_winner_id)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -101,10 +103,14 @@ export async function saveSettlement(
       actorId,
       closure,
       settled.winnerId,
-      settled.winnerId ? 'home' : 'next-round',
+      finished ? 'home' : 'next-round',
       version,
       new Date(now),
-      settled.roundWinnerId ?? (closure === 'toque' ? null : actorId),
+      settled.roundWinnerId !== undefined
+        ? settled.roundWinnerId
+        : closure === 'toque'
+          ? null
+          : actorId,
     ],
   );
   for (const player of settled.players) {
@@ -146,9 +152,14 @@ export async function saveSettlement(
     `UPDATE round SET status='closed',phase='closed' WHERE game_id=$1 AND round_no=$2`,
     [gameId, roundNo],
   );
-  await client.query(`UPDATE game SET status=$2,finished_at=$3 WHERE game_id=$1`, [
-    gameId,
-    settled.winnerId ? 'finished' : 'between-rounds',
-    settled.winnerId ? new Date(now) : null,
-  ]);
+  await client.query(
+    `UPDATE game SET status=$2,finished_at=$3,winner_player_id=$4,finish_reason=$5 WHERE game_id=$1`,
+    [
+      gameId,
+      finished ? 'finished' : 'between-rounds',
+      finished ? new Date(now) : null,
+      settled.winnerId,
+      finished ? (closure === 'abandonment' ? 'abandonment' : 'round') : null,
+    ],
+  );
 }

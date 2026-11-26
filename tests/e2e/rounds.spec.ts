@@ -60,10 +60,28 @@ for (const mode of ['Clásica', 'Apuntado'] as const)
         await other.reload();
         await expect(page.getByRole('button', { name: 'Cerrar por combinaciones' })).toBeEnabled();
       };
+      const rejectAndDismiss = async () => {
+        const roundState = () =>
+          harness.pool.query(
+            `SELECT g.version,r.turn_no,r.phase,r.turn_deadline_at FROM game g JOIN round r USING(game_id)
+           WHERE g.game_id=$1 AND r.status='open'`,
+            [game.game_id],
+          );
+        const before = (await roundState()).rows;
+        const hand = page.getByRole('group', { name: 'Tu mano' }).getByRole('button');
+        const cards = await hand.allTextContents();
+        await page.getByRole('button', { name: 'Cerrar por combinaciones' }).click();
+        const alert = page.getByRole('alert');
+        await expect(alert.getByRole('button', { name: 'Entendido', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Actualizar mesa' })).toHaveCount(0);
+        await alert.getByRole('button', { name: 'Entendido', exact: true }).click();
+        await expect(alert).toHaveCount(0);
+        expect(await hand.allTextContents()).toEqual(cards);
+        expect((await roundState()).rows).toEqual(before);
+      };
       if (mode === 'Clásica') {
         await arrange(full55(), full433(2));
-        await page.getByRole('button', { name: 'Cerrar por combinaciones' }).click();
-        await expect(page.getByRole('alert')).toContainText('4, 3 y 3');
+        await rejectAndDismiss();
         await expect(page.getByRole('button', { name: 'Robar del mazo' })).toBeDisabled();
         await expect(other.getByRole('region', { name: 'Acta de ronda 1' })).toHaveCount(0);
         await arrange(full433(), full433(2));
@@ -75,6 +93,7 @@ for (const mode of ['Clásica', 'Apuntado'] as const)
         await expect(page.getByRole('button', { name: 'Repartir siguiente ronda' })).toHaveCount(0);
       } else {
         await arrange(touch5(), full433(2));
+        await rejectAndDismiss();
         await page.getByRole('button', { name: 'Tocar', exact: true }).click();
         await expect(page.getByRole('table')).toContainText('-5');
         await expect(other.getByRole('region', { name: 'Acta de ronda 1' })).toContainText(

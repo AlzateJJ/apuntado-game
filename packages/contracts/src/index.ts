@@ -112,6 +112,7 @@ export const gameCommandSchema = z.discriminatedUnion('type', [
   createRoomSchema,
   joinRoomSchema,
   z.strictObject({ type: z.literal('room:leave'), ...versioned }),
+  z.strictObject({ type: z.literal('game:surrender'), ...versioned }),
   z.strictObject({ type: z.literal('room:start'), ...versioned }),
   z.strictObject({ type: z.literal('turn:draw'), ...turn, source: z.enum(['stock', 'discard']) }),
   z.strictObject({
@@ -135,7 +136,7 @@ export const roundReportSchema = z.strictObject({
 });
 export type RoundReportRequest = z.infer<typeof roundReportSchema>;
 export type Closure = 'combinaciones' | 'pintas' | 'toque';
-export type RoundClosure = Closure | 'inactivity';
+export type RoundClosure = Closure | 'inactivity' | 'abandonment';
 export interface CardGroup {
   kind: 'group' | 'run' | 'suit';
   cards: PlayingCard[];
@@ -164,8 +165,10 @@ export interface RoundReport extends RoundSummary {
       | 'touch'
       | 'minimum-penalty'
       | 'inactivity'
+      | 'withdrawal'
       | 'last-in-round';
     roundForfeited: boolean;
+    withdrawn: boolean;
     before: number | null;
     delta: number | null;
     after: number | null;
@@ -188,6 +191,7 @@ export interface RoomPlayer {
   cardCount: number;
   score: number | null;
   eliminated: boolean;
+  withdrawn: boolean;
   roundForfeited: boolean;
   consecutiveTimeouts: number;
 }
@@ -213,6 +217,7 @@ export interface RoomSnapshot {
   lastAction: LastAction | null;
   history: RoundSummary[];
   result: RoundReport | null;
+  outcome: { winnerId: string | null; reason: 'round' | 'abandonment' } | null;
   round: null | {
     number: number;
     turnNo: number;

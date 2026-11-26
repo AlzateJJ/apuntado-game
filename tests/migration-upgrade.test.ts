@@ -66,12 +66,39 @@ test('phase-two upgrade reconstructs the original starter across seat gaps and w
         client.release();
       }
     }
+    await runner({ ...settings, count: 2 });
+    const legacyGame = [...expected.keys()][0]!;
+    const winner = expected.get(legacyGame)!;
+    await pool.query("UPDATE game SET status='finished',version=1 WHERE game_id=$1", [legacyGame]);
+    await pool.query("UPDATE round SET status='closed',phase='closed' WHERE game_id=$1", [
+      legacyGame,
+    ]);
+    await pool.query(
+      `INSERT INTO round_result(game_id,round_no,actor_id,closure,winner_id,round_winner_id,next_action,committed_version)
+      VALUES($1,1,$2,'combinaciones',$2,$2,'home',1)`,
+      [legacyGame, winner],
+    );
+    const legacyReport = (
+      await pool.query('SELECT * FROM round_result WHERE game_id=$1', [legacyGame])
+    ).rows[0];
     await runner(settings);
+    assert.deepEqual(
+      (
+        await pool.query('SELECT winner_player_id,finish_reason FROM game WHERE game_id=$1', [
+          legacyGame,
+        ])
+      ).rows[0],
+      { winner_player_id: winner, finish_reason: 'round' },
+    );
+    assert.deepEqual(
+      (await pool.query('SELECT * FROM round_result WHERE game_id=$1', [legacyGame])).rows[0],
+      legacyReport,
+    );
     const rows = (await pool.query('SELECT game_id,initial_player_id FROM round')).rows;
     for (const row of rows) assert.equal(row.initial_player_id, expected.get(row.game_id));
     assert.equal(rows.length, 3);
     await runner(settings);
-    assert.equal((await pool.query('SELECT * FROM schema_migrations')).rowCount, 5);
+    assert.equal((await pool.query('SELECT * FROM schema_migrations')).rowCount, 6);
   } finally {
     await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     await pool.end();

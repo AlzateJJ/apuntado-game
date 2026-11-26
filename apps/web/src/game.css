@@ -261,6 +261,14 @@
   color: inherit;
   font-size: 12px;
 }
+.refresh-table-button {
+  transition: transform 160ms ease;
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .refresh-table-button:hover:not(:disabled) {
+    transform: scale(1.04);
+  }
+}
 .pending-action {
   color: #7a886b;
   font-size: 12px;

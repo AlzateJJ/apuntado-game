@@ -263,6 +263,7 @@ export async function retryGameCommand() {
       store.dispatch(
         gameActions.commandFailed({
           message: reply.message,
+          code: reply.code,
           uncertain: reply.code === 'TEMPORARILY_UNAVAILABLE' || reply.code === 'RATE_LIMITED',
         }),
       );

@@ -18,6 +18,16 @@ Validación de esta actualización:
 
 Los cambios están preparados en el repositorio local. Su publicación requiere backend, quinta migración y frontend, en ese orden; ver la guía de despliegue. No se ejecutó esta actualización sobre la base de Railway durante las pruebas.
 
+### Rendición voluntaria — 24 de noviembre de 2026
+
+**Abandonar partida** está disponible durante el juego y entre rondas desde Mi mesa, Rondas anteriores, Cómo jugar y Mi cuenta. Un diálogo confirma la salida definitiva y permite volver inmediatamente a crear o unirse a otra sala. Los demás continúan; si solo queda un participante no eliminado, gana la partida sin premio de cierre por abandono. Se transfiere el anfitrión, se omiten los asientos retirados y se conservan las actas anteriores. La desconexión y la pérdida de una ronda por inactividad conservan su comportamiento; ver ADR-12.
+
+Esta ampliación está validada localmente y requiere **sexta migración, backend y frontend**; el backend debe aplicar las migraciones antes de iniciar, seguido de Vercel. No se publicó ni se modificó Railway en esta tarea.
+
+- `npm run check` aprobado: formato, tipos, arquitectura, 80 pruebas de lógica/integración y compilación. Incluye las fases de robo/descarte/transición, salidas fuera del turno, anfitrión, espectadores eliminados, continuidad entre rondas, reintentos concurrentes, reversión ante fallo y actualización de ganadores anteriores sin alterar actas.
+- 18 escenarios Playwright aprobados en escritorio y móvil: salas, turnos reales, recuperación, cierres Clásica/Apuntado, seis jugadores y rendición. Los cuatro escenarios de rendición se repitieron tras añadir la recuperación de una solicitud sin confirmación; todos aprobaron y verifican el mismo identificador de operación al reintentar.
+- Se revisaron visualmente los diálogos en ambos tamaños. Las pruebas verifican foco inicial, cancelación y Escape, ausencia de desbordamiento horizontal, salida desde Mi cuenta, actualización de otra pestaña y creación posterior de sala. La emulación móvil no sustituye un teléfono físico.
+
 ## Demostración
 
 1. Abrir `http://127.0.0.1:5173` para desarrollo o `http://localhost:3100` para la versión compilada en Docker. Usar estos nombres distintos mantiene separadas sus sesiones.

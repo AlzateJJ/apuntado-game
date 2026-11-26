@@ -42,6 +42,7 @@ interface GameState {
   room: RoomSnapshot | null;
   loaded: boolean;
   error: string | null;
+  errorAction: 'dismiss' | 'sync' | 'retry' | null;
   pending: GameCommand | null;
   retryRequired: boolean;
   receivedAt: number;
@@ -51,6 +52,7 @@ const emptyGame: GameState = {
   room: null,
   loaded: false,
   error: null,
+  errorAction: null,
   pending: null,
   retryRequired: false,
   receivedAt: 0,
@@ -74,24 +76,46 @@ const game = createSlice({
       state.loaded = true;
       state.receivedAt = action.payload.receivedAt;
       state.roundTripMs = action.payload.roundTripMs;
+      if (state.errorAction === 'sync') {
+        state.error = null;
+        state.errorAction = null;
+      }
     },
     commandStarted(state, action: PayloadAction<GameCommand>) {
       state.pending = action.payload;
       state.retryRequired = false;
       state.error = null;
+      state.errorAction = null;
     },
     commandConfirmed(state) {
       state.pending = null;
       state.retryRequired = false;
       state.error = null;
+      state.errorAction = null;
     },
-    commandFailed(state, action: PayloadAction<{ message: string; uncertain: boolean }>) {
+    commandFailed(
+      state,
+      action: PayloadAction<{ message: string; uncertain: boolean; code?: string }>,
+    ) {
       state.error = action.payload.message;
       state.retryRequired = action.payload.uncertain;
+      state.errorAction = action.payload.uncertain
+        ? 'retry'
+        : ['VERSION_CONFLICT', 'TURN_CHANGED', 'TURN_EXPIRED', 'TURN_ADVANCING'].includes(
+              action.payload.code ?? '',
+            )
+          ? 'sync'
+          : 'dismiss';
       if (!action.payload.uncertain) state.pending = null;
     },
     readFailed(state, action: PayloadAction<string>) {
       state.error = action.payload;
+      state.errorAction = state.retryRequired ? 'retry' : 'sync';
+    },
+    noticeDismissed(state) {
+      if (state.errorAction !== 'dismiss') return;
+      state.error = null;
+      state.errorAction = null;
     },
   },
   extraReducers: (builder) => {

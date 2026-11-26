@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   createRoomSchema,
   joinRoomSchema,
@@ -8,7 +8,7 @@ import {
   type RoomSnapshot,
   type Closure,
 } from '@apuntado/contracts';
-import type { RootState } from './store';
+import { gameActions, type RootState } from './store';
 import { sendGameCommand, retryGameCommand, syncGame } from './session';
 import { RoundOutcome } from './RoundResults';
 import { SoundButton, useTurnWarning } from './Sound';
@@ -197,7 +197,7 @@ function RoomHeader({ room }: { room: RoomSnapshot }) {
       <div>
         <div className="eyebrow">
           {room.mode === 'classic' ? 'MODALIDAD CLÁSICA' : 'MODALIDAD APUNTADO'} ·{' '}
-          {room.players.length}/{room.capacity} JUGADORES
+          {room.players.filter((player) => !player.withdrawn).length}/{room.capacity} JUGADORES
         </div>
         <h1>{room.name}</h1>
       </div>
@@ -240,12 +240,18 @@ function Roster({ room, playerId }: { room: RoomSnapshot; playerId: string }) {
             <span>
               {player.id === room.hostId ? 'Anfitrión' : 'Jugador'}
               {room.round ? ` · ${player.cardCount} cartas` : ''}
-              {player.eliminated ? ' · Eliminado' : ''}
-              {player.roundForfeited
-                ? ' · Perdió la ronda por inactividad'
-                : player.consecutiveTimeouts > 0
-                  ? ` · ${player.consecutiveTimeouts}/3 turnos automáticos`
+              {player.withdrawn
+                ? ' · Abandonó la partida'
+                : player.eliminated
+                  ? ' · Eliminado'
                   : ''}
+              {player.withdrawn
+                ? ''
+                : player.roundForfeited
+                  ? ' · Perdió la ronda por inactividad'
+                  : player.consecutiveTimeouts > 0
+                    ? ` · ${player.consecutiveTimeouts}/3 turnos automáticos`
+                    : ''}
             </span>
           </div>
           {player.score !== null && (
@@ -372,17 +378,19 @@ function Table({
   const actor =
     room.players.find((player) => player.id === action?.playerId)?.displayName ?? 'Un jugador';
   const lastMessage =
-    action?.type === 'round:forfeit'
-      ? `${actor} perdió esta ronda tras tres turnos automáticos consecutivos.`
-      : action?.automatic
-        ? `${actor} agotó el tiempo. El servidor completó su turno.`
-        : action?.type === 'turn:draw'
-          ? `${actor} robó una carta.`
-          : action?.type === 'turn:discard'
-            ? `${actor} descartó una carta.`
-            : action?.type === 'turn:pass'
-              ? `${actor} pasó el turno.`
-              : 'Cartas repartidas. La mesa está lista.';
+    action?.type === 'game:surrender'
+      ? `${actor} abandonó la partida.`
+      : action?.type === 'round:forfeit'
+        ? `${actor} perdió esta ronda tras tres turnos automáticos consecutivos.`
+        : action?.automatic
+          ? `${actor} agotó el tiempo. El servidor completó su turno.`
+          : action?.type === 'turn:draw'
+            ? `${actor} robó una carta.`
+            : action?.type === 'turn:discard'
+              ? `${actor} descartó una carta.`
+              : action?.type === 'turn:pass'
+                ? `${actor} pasó el turno.`
+                : 'Cartas repartidas. La mesa está lista.';
   return (
     <section className="game-table">
       <RoomHeader room={room} />
@@ -571,6 +579,7 @@ function Table({
   );
 }
 export default function GameHub() {
+  const dispatch = useDispatch();
   const game = useSelector((state: RootState) => state.game);
   const auth = useSelector((state: RootState) => state.auth);
   const disabled = auth.connection !== 'online' || !!game.pending;
@@ -579,14 +588,20 @@ export default function GameHub() {
       {game.error && (
         <div className="game-error" role="alert">
           <span>{game.error}</span>
-          {game.retryRequired ? (
+          {game.errorAction === 'retry' ? (
             <button onClick={() => void retryGameCommand()} disabled={auth.connection !== 'online'}>
               Reintentar la misma acción
             </button>
-          ) : (
-            <button onClick={() => void syncGame()} disabled={auth.connection !== 'online'}>
+          ) : game.errorAction === 'sync' ? (
+            <button
+              className="refresh-table-button"
+              onClick={() => void syncGame()}
+              disabled={auth.connection !== 'online'}
+            >
               Actualizar mesa
             </button>
+          ) : (
+            <button onClick={() => dispatch(gameActions.noticeDismissed())}>Entendido</button>
           )}
         </div>
       )}

@@ -25,7 +25,8 @@ export interface SettlementPlayer extends Evaluation {
 export interface Settlement {
   players: SettlementPlayer[];
   winnerId: string | null;
-  roundWinnerId?: string;
+  roundWinnerId?: string | null;
+  finished?: boolean;
 }
 export type Variant = (
   players: RulePlayer[],

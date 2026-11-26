@@ -35,6 +35,8 @@ import { variantCatalog } from './rules/catalog.js';
 import type { VariantCatalog } from './rules/model.js';
 import { readReport, saveSettlement } from './settlement-store.js';
 import { recordTimeout } from './inactivity-store.js';
+import { surrender } from './withdrawal-store.js';
+import { excludeWithdrawn } from './rules/withdrawal.js';
 
 type Create = Extract<GameCommand, { type: 'room:create' }>;
 type Join = Extract<GameCommand, { type: 'room:join' }>;
@@ -302,9 +304,13 @@ export class GameService {
       ])
     ).rows[0];
     if (!game) throw new AppError(404, 'ROOM_NOT_FOUND', 'No encontramos esa sala.');
-    const roster = (await members(client, game.game_id)).filter((row) => !row.left_at);
+    const participants = await members(client, game.game_id);
+    const roster = participants.filter((row) => !row.left_at);
     if (!roster.some((row) => row.player_id === playerId))
       throw new AppError(403, 'NOT_A_MEMBER', 'No perteneces a esta sala.');
+    // Leaving is always evaluated against the locked current game, even if a turn just advanced.
+    if (command.type === 'game:surrender')
+      return this.surrender(client, game, roster, playerId, command);
     // Returning home changes membership, never the immutable final result.
     if (command.type === 'room:leave' && game.status === 'finished')
       return this.leave(client, game, roster, playerId, command);
@@ -314,14 +320,26 @@ export class GameService {
     if (command.type === 'room:start') return this.start(client, game, roster, playerId, command);
     if (command.type === 'round:next')
       return this.nextRound(client, game, roster, playerId, command);
-    return this.playTurn(client, game, roster, playerId, command);
+    return this.playTurn(client, game, participants, playerId, command);
+  }
+  private async surrender(
+    client: PoolClient,
+    game: GameRow,
+    roster: MemberRow[],
+    playerId: string,
+    command: Extract<GameCommand, { type: 'game:surrender' }>,
+  ) {
+    if (game.status === 'waiting' || game.status === 'finished')
+      return this.leave(client, game, roster, playerId, command);
+    await surrender(client, game, playerId, this.now(), this.random);
+    return this.finish(client, game.game_id, playerId, command, 'RoomChanged');
   }
   private async leave(
     client: PoolClient,
     game: GameRow,
     roster: MemberRow[],
     playerId: string,
-    command: Extract<GameCommand, { type: 'room:leave' }>,
+    command: Extract<GameCommand, { type: 'room:leave' | 'game:surrender' }>,
   ) {
     if (game.status !== 'waiting' && game.status !== 'finished')
       fail('GAME_IN_PROGRESS', 'La partida ya comenzó. Una desconexión no elimina tu asiento.');
@@ -527,6 +545,11 @@ export class GameService {
     const settled = this.variants(game.profile_id)(players, playerId, command.closure, game);
     for (const player of settled.players)
       if (state.forfeited.includes(player.id)) player.explanation = 'inactivity';
+    excludeWithdrawn(
+      settled,
+      roster.filter((row) => row.surrendered_at).map((row) => row.player_id),
+      game,
+    );
     await saveSettlement(
       client,
       game.game_id,
